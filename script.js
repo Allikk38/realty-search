@@ -252,6 +252,8 @@ async function search() {
         
         let fuzzyMatches = [];
         let suggestions = [];
+        let gptUsed = false;
+        let gptValue = '';
         
         // Если точных совпадений нет — пробуем GPT
         if (exactMatches.length === 0) {
@@ -273,8 +275,8 @@ async function search() {
                     
                     if (gptMatches.length > 0) {
                         exactMatches = gptMatches;
-                        // Добавляем подсказку
-                        resultsDiv.innerHTML = `<div class="suggestion"><i class="fas fa-magic"></i> Алиса подсказала: ищем "${gptResult.type} — ${gptResult.value}"</div>`;
+                        gptUsed = true;
+                        gptValue = `${gptResult.type} — ${gptResult.value}`;
                     }
                 }
             }
@@ -339,7 +341,11 @@ async function search() {
         }
         
         let html = '';
-        if (exactMatches.length === 0 && fuzzyMatches.length > 0) {
+        
+        // Подсказка от Алисы
+        if (gptUsed) {
+            html += `<div class="suggestion"><i class="fas fa-magic"></i> Алиса подсказала: ищем "${gptValue}"</div>`;
+        } else if (exactMatches.length === 0 && fuzzyMatches.length > 0) {
             html += `<div class="suggestion"><i class="fas fa-lightbulb"></i> Найдено по похожему названию: "${suggestions[0]}"</div>`;
         }
         
@@ -367,7 +373,7 @@ async function search() {
             html += `</div>`;
         });
         
-        resultsDiv.innerHTML = (resultsDiv.innerHTML || '') + html;
+        resultsDiv.innerHTML = html;
         shareBtn.style.display = 'inline-flex';
         
         document.querySelectorAll('.copy-btn').forEach(btn => {
