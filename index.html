@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Поиск по базе ЖК</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f7fb;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        h1 {
+            margin: 0 0 8px 0;
+            color: #1e293b;
+        }
+        .sub {
+            color: #64748b;
+            margin-bottom: 30px;
+            border-left: 3px solid #3b82f6;
+            padding-left: 12px;
+        }
+        .search-box {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        input {
+            flex: 1;
+            padding: 14px 18px;
+            font-size: 16px;
+            border: 1px solid #e2e8f0;
+            border-radius: 40px;
+            outline: none;
+            transition: 0.2s;
+        }
+        input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+        }
+        button {
+            padding: 14px 28px;
+            font-size: 16px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 40px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: 0.2s;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .result-card {
+            background: #f8fafc;
+            border-radius: 16px;
+            padding: 18px;
+            margin-bottom: 16px;
+            border: 1px solid #e2e8f0;
+        }
+        .result-card strong {
+            color: #0f172a;
+        }
+        .badge {
+            display: inline-block;
+            background: #e2e8f0;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+        .not-found {
+            text-align: center;
+            padding: 40px;
+            color: #64748b;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #3b82f6;
+        }
+        .footer {
+            font-size: 12px;
+            color: #94a3b8;
+            text-align: center;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🏢 Поиск по базе ЖК</h1>
+    <div class="sub">Ищи по названию ЖК, застройщику или менеджеру</div>
+
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Например: Брусника, Авиатор, Денис Бородин..." autofocus>
+        <button id="searchBtn">🔍 Найти</button>
+    </div>
+
+    <div id="results">
+        <div class="loading">✨ Введите запрос для поиска</div>
+    </div>
+    <div class="footer">
+        База обновляется из Google Sheets автоматически
+    </div>
+</div>
+
+<script>
+    // 👇 ВСТАВЬ СВОЙ ID ТАБЛИЦЫ
+    const SHEET_ID = '119VPB-mAMign9y9Ze4vQYxmoA_6a_bdIzdvM-yVDwGU'; // ЗАМЕНИ НА СВОЙ
+    const SHEET_NAME = 'Плоская_база';
+    
+    async function loadData() {
+        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${SHEET_NAME}`;
+        const response = await fetch(url);
+        const text = await response.text();
+        const jsonData = JSON.parse(text.substring(47, text.length - 2));
+        const rows = jsonData.table.rows;
+        const headers = jsonData.table.cols.map(col => col.label);
+        
+        const data = [];
+        for (let row of rows) {
+            const obj = {};
+            headers.forEach((h, idx) => {
+                obj[h] = row.c[idx] ? row.c[idx].v : '';
+            });
+            data.push(obj);
+        }
+        return data;
+    }
+    
+    async function search() {
+        const query = document.getElementById('searchInput').value.trim();
+        const resultsDiv = document.getElementById('results');
+        
+        if (!query) {
+            resultsDiv.innerHTML = '<div class="loading">📝 Введите запрос для поиска</div>';
+            return;
+        }
+        
+        resultsDiv.innerHTML = '<div class="loading">⏳ Ищем...</div>';
+        
+        try {
+            const data = await loadData();
+            const lowerQuery = query.toLowerCase();
+            
+            const filtered = data.filter(item => {
+                return (item['Название ЖК'] && item['Название ЖК'].toLowerCase().includes(lowerQuery)) ||
+                       (item['Застройщик'] && item['Застройщик'].toLowerCase().includes(lowerQuery)) ||
+                       (item['Менеджер'] && item['Менеджер'].toLowerCase().includes(lowerQuery));
+            });
+            
+            if (filtered.length === 0) {
+                resultsDiv.innerHTML = '<div class="not-found">🤷‍♂️ Ничего не найдено<br>Попробуйте другой запрос</div>';
+                return;
+            }
+            
+            let html = `<div style="margin-bottom: 16px;">🔍 Найдено: ${filtered.length}</div>`;
+            filtered.slice(0, 20).forEach(item => {
+                html += `
+                    <div class="result-card">
+                        <strong>🏢 ${item['Название ЖК'] || '—'}</strong><br>
+                        🏗 Застройщик: ${item['Застройщик'] || '—'}<br>
+                        👤 Менеджер: ${item['Менеджер'] || '—'}<br>
+                        ${item['Телефон'] ? `📞 ${item['Телефон']}<br>` : ''}
+                        ${item['Адрес ЖК'] ? `📍 ${item['Адрес ЖК']}` : ''}
+                        ${item['Должность/Тип'] ? `<div class="badge">${item['Должность/Тип']}</div>` : ''}
+                    </div>
+                `;
+            });
+            resultsDiv.innerHTML = html;
+        } catch (err) {
+            resultsDiv.innerHTML = `<div class="not-found">❌ Ошибка загрузки данных: ${err.message}<br>Проверьте, что таблица опубликована</div>`;
+        }
+    }
+    
+    document.getElementById('searchBtn').addEventListener('click', search);
+    document.getElementById('searchInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') search();
+    });
+</script>
+</body>
+</html>
