@@ -1,16 +1,13 @@
 let cachedData = null;
 let lastUpdateDate = null;
+let lastSearchQuery = '';
+let lastSearchType = 'all';
+let lastResults = [];
 
 // ========== АНИМАЦИИ ЗАГРУЗКИ ==========
 function showSkeleton() {
     const resultsDiv = document.getElementById('results');
     const skeletonHtml = `
-        <div class="skeleton-card">
-            <div class="skeleton-title"></div>
-            <div class="skeleton-line"></div>
-            <div class="skeleton-line short"></div>
-            <div class="skeleton-line"></div>
-        </div>
         <div class="skeleton-card">
             <div class="skeleton-title"></div>
             <div class="skeleton-line"></div>
@@ -35,6 +32,19 @@ function showSpinner() {
             <div class="loading-text">Загрузка данных...</div>
         </div>
     `;
+}
+
+function showToast(message, isError = false) {
+    const existing = document.querySelector('.toast-notification');
+    if (existing) existing.remove();
+    
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    toast.style.background = isError ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.9)';
+    toast.innerHTML = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => toast.remove(), 3000);
 }
 
 // ========== УМНАЯ НОРМАЛИЗАЦИЯ ==========
@@ -144,19 +154,58 @@ async function loadData() {
     return data;
 }
 
+// ========== ГЕНЕРАЦИЯ ССЫЛКИ ДЛЯ ПОДЕЛИТЬСЯ ==========
+function generateShareLink() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('q', lastSearchQuery);
+    url.searchParams.set('t', lastSearchType);
+    return url.toString();
+}
+
+function shareResult() {
+    const link = generateShareLink();
+    navigator.clipboard.writeText(link).then(() => {
+        showToast('✅ Ссылка скопирована! Отправьте её коллеге.');
+    }).catch(() => {
+        showToast('❌ Не удалось скопировать ссылку', true);
+    });
+}
+
+// ========== ЗАГРУЗКА ПАРАМЕТРОВ ИЗ URL ==========
+function loadParamsFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const query = urlParams.get('q');
+    const type = urlParams.get('t');
+    
+    if (query) {
+        document.getElementById('searchInput').value = query;
+        if (type && ['all', 'complex', 'developer', 'manager'].includes(type)) {
+            document.getElementById('searchType').value = type;
+        }
+        setTimeout(() => search(), 100);
+    }
+}
+
 async function search() {
     const query = document.getElementById('searchInput').value.trim();
     const searchType = document.getElementById('searchType').value;
     const resultsDiv = document.getElementById('results');
     const statsDiv = document.getElementById('stats');
+    const shareBtn = document.getElementById('shareBtn');
+    
+    // Сохраняем для поделиться
+    lastSearchQuery = query;
+    lastSearchType = searchType;
     
     if (!query) {
-        resultsDiv.innerHTML = '<div class="loading">📝 Введите запрос для поиска</div>';
+        resultsDiv.innerHTML = '<div class="loading">Введите запрос для поиска</div>';
         statsDiv.style.display = 'none';
+        shareBtn.style.display = 'none';
         return;
     }
     
     showSpinner();
+    shareBtn.style.display = 'none';
     
     try {
         const data = await loadData();
@@ -210,33 +259,34 @@ async function search() {
         }
         
         const results = exactMatches.length > 0 ? exactMatches : fuzzyMatches;
+        lastResults = results;
         
         statsDiv.style.display = 'flex';
         statsDiv.innerHTML = `
-            <span>📊 Всего записей: ${data.length}</span>
-            <span>🔍 Найдено: ${results.length}</span>
-            <span>📅 Обновлено: ${lastUpdateDate.toLocaleDateString()}</span>
+            <span><i class="fas fa-database"></i> Всего: ${data.length}</span>
+            <span><i class="fas fa-search"></i> Найдено: ${results.length}</span>
+            <span><i class="fas fa-calendar-alt"></i> Обновлено: ${lastUpdateDate.toLocaleDateString()}</span>
         `;
         
         if (results.length === 0) {
             let suggestionHtml = '';
             if (suggestions.length > 0) {
-                suggestionHtml = `<div class="suggestion">💡 Возможно, вы искали: ${suggestions.slice(0, 3).map(s => `<strong>${s}</strong>`).join(', ')}</div>`;
+                suggestionHtml = `<div class="suggestion"><i class="fas fa-lightbulb"></i> Возможно, вы искали: ${suggestions.slice(0, 3).map(s => `<strong>${s}</strong>`).join(', ')}</div>`;
             }
             
             resultsDiv.innerHTML = `
                 <div class="not-found">
-                    🤷‍♂️ Ничего не найдено по запросу "${query}"
+                    <i class="fas fa-frown"></i> Ничего не найдено по запросу "${query}"
                     ${suggestionHtml}
-                    <br><br>Совет: проверьте написание или попробуйте сократить запрос
                 </div>
             `;
+            shareBtn.style.display = 'none';
             return;
         }
         
         let html = '';
         if (exactMatches.length === 0 && fuzzyMatches.length > 0) {
-            html += `<div class="suggestion">💡 Найдено по похожему названию: "${suggestions[0]}"</div>`;
+            html += `<div class="suggestion"><i class="fas fa-lightbulb"></i> Найдено по похожему названию: "${suggestions[0]}"</div>`;
         }
         
         results.slice(0, 50).forEach(item => {
@@ -244,44 +294,46 @@ async function search() {
             html += `<div class="result-card">`;
             
             if (item['Название ЖК'] && item['Название ЖК'].trim() !== '') {
-                html += `<strong>🏢 ${item['Название ЖК']}</strong><br>`;
+                html += `<strong><i class="fas fa-building"></i> ${item['Название ЖК']}</strong><br>`;
             }
             if (item['Застройщик'] && item['Застройщик'].trim() !== '') {
-                html += `🏗 Застройщик: ${item['Застройщик']}<br>`;
+                html += `<i class="fas fa-hard-hat"></i> Застройщик: ${item['Застройщик']}<br>`;
             }
             if (item['Менеджер'] && item['Менеджер'].trim() !== '' && item['Менеджер'] !== 'Общий телефон') {
-                html += `👤 Менеджер: ${item['Менеджер']}<br>`;
+                html += `<i class="fas fa-user-tie"></i> Менеджер: ${item['Менеджер']}<br>`;
             }
             if (phone) {
-                html += `📞 Телефон: ${phone}<br>`;
-                html += `<button class="copy-btn" data-phone="${phone.replace(/'/g, "\\'")}">📋 Копировать телефон</button>`;
+                html += `<i class="fas fa-phone-alt"></i> Телефон: <a href="tel:${phone.replace(/[^0-9+]/g, '')}" style="color: #a78bfa; text-decoration: none;">${phone}</a><br>`;
+                html += `<button class="copy-btn" data-phone="${phone.replace(/'/g, "\\'")}"><i class="fas fa-copy"></i> Копировать телефон</button>`;
             }
             if (item['Адрес ЖК'] && item['Адрес ЖК'].trim() !== '') {
-                html += `<br>📍 Адрес: ${item['Адрес ЖК']}`;
+                html += `<br><i class="fas fa-map-marker-alt"></i> Адрес: ${item['Адрес ЖК']}`;
             }
             
             html += `</div>`;
         });
         
         resultsDiv.innerHTML = html;
+        shareBtn.style.display = 'inline-flex';
         
         document.querySelectorAll('.copy-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const phone = btn.getAttribute('data-phone');
                 navigator.clipboard.writeText(phone).then(() => {
-                    const originalText = btn.textContent;
-                    btn.textContent = '✅ Скопировано!';
-                    setTimeout(() => { btn.textContent = originalText; }, 1500);
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = '<i class="fas fa-check"></i> Скопировано!';
+                    setTimeout(() => { btn.innerHTML = originalText; }, 1500);
                 }).catch(() => {
-                    alert('Не удалось скопировать. Выделите телефон вручную.');
+                    showToast('Не удалось скопировать', true);
                 });
             });
         });
         
     } catch (err) {
-        resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}<br>Файл data.csv не найден</div>`;
+        resultsDiv.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> Ошибка: ${err.message}</div>`;
         statsDiv.style.display = 'none';
+        shareBtn.style.display = 'none';
     }
 }
 
@@ -291,20 +343,23 @@ async function check() {
         const data = await loadData();
         document.getElementById('stats').style.display = 'flex';
         document.getElementById('stats').innerHTML = `
-            <span>📊 Всего записей: ${data.length}</span>
-            <span>✅ Готов к поиску</span>
-            <span>📅 Обновлено: ${lastUpdateDate.toLocaleDateString()}</span>
+            <span><i class="fas fa-database"></i> Всего: ${data.length}</span>
+            <span><i class="fas fa-check-circle"></i> Готов к поиску</span>
+            <span><i class="fas fa-calendar-alt"></i> Обновлено: ${lastUpdateDate.toLocaleDateString()}</span>
         `;
         const resultsDiv = document.getElementById('results');
-        resultsDiv.innerHTML = '<div class="success">✅ Данные загружены! Введите запрос для поиска.</div>';
+        resultsDiv.innerHTML = '<div class="success"><i class="fas fa-check-circle"></i> Данные загружены! Введите запрос для поиска.</div>';
+        
+        loadParamsFromUrl();
     } catch (err) {
-        resultsDiv.innerHTML = `<div class="error">❌ ${err.message}<br>Файл data.csv не найден</div>`;
+        resultsDiv.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${err.message}<br>Файл data.csv не найден</div>`;
     }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     check();
     document.getElementById('searchBtn').addEventListener('click', search);
+    document.getElementById('shareBtn').addEventListener('click', shareResult);
     document.getElementById('searchInput').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') search();
     });
