@@ -64,7 +64,6 @@
         .footer { font-size: 12px; color: #94a3b8; text-align: center; margin-top: 30px; }
         .success { background: #dcfce7; color: #166534; padding: 12px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
         .error { background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
-        .debug { background: #f1f5f9; color: #334155; padding: 8px; font-size: 12px; margin-bottom: 20px; border-radius: 8px; font-family: monospace; display: none; }
     </style>
 </head>
 <body>
@@ -87,7 +86,6 @@
 
 <script>
     let cachedData = null;
-    let debugMode = false; // включи, если нужно отладить
     
     async function loadData() {
         if (cachedData) return cachedData;
@@ -127,14 +125,6 @@
         }
         
         cachedData = data;
-        
-        // Отладочный вывод в консоль (только если включён debugMode)
-        if (debugMode) {
-            console.log('Загружено записей:', data.length);
-            console.log('Пример первой записи:', data[0]);
-            console.log('Все застройщики:', [...new Set(data.map(d => d['Застройщик']))].slice(0, 20));
-        }
-        
         return data;
     }
     
@@ -153,7 +143,7 @@
             const data = await loadData();
             const lowerQuery = query.toLowerCase();
             
-            // Ищем по трём полям (регистронезависимо)
+            // Ищем по трём полям
             const filtered = data.filter(item => {
                 const complex = (item['Название ЖК'] || '').toLowerCase();
                 const developer = (item['Застройщик'] || '').toLowerCase();
@@ -164,33 +154,34 @@
             });
             
             if (filtered.length === 0) {
-                resultsDiv.innerHTML = '<div class="not-found">🤷‍♂️ Ничего не найдено<br>Проверьте написание или попробуйте другой запрос</div>';
+                resultsDiv.innerHTML = '<div class="not-found">🤷‍♂️ Ничего не найдено</div>';
                 return;
             }
             
             let html = `<div class="success">🔍 Найдено: ${filtered.length}</div>`;
             
             filtered.slice(0, 30).forEach(item => {
-                // Показываем только заполненные поля
                 html += `<div class="result-card">`;
                 
-                if (item['Название ЖК'] && item['Название ЖК'] !== '—') {
-                    html += `<strong>🏢 ${item['Название ЖК']}</strong><br>`;
+                // Всегда показываем Название ЖК, если оно есть (даже если оно —)
+                const complex = item['Название ЖК'];
+                if (complex && complex.trim() !== '') {
+                    html += `<strong>🏢 ${complex}</strong><br>`;
                 }
                 
-                if (item['Застройщик'] && item['Застройщик'] !== '—') {
+                if (item['Застройщик'] && item['Застройщик'].trim() !== '') {
                     html += `🏗 Застройщик: ${item['Застройщик']}<br>`;
                 }
                 
-                if (item['Менеджер'] && item['Менеджер'] !== '—' && item['Менеджер'] !== 'Общий телефон') {
+                if (item['Менеджер'] && item['Менеджер'].trim() !== '' && item['Менеджер'] !== 'Общий телефон') {
                     html += `👤 Менеджер: ${item['Менеджер']}<br>`;
                 }
                 
-                if (item['Телефон'] && item['Телефон'] !== '—') {
+                if (item['Телефон'] && item['Телефон'].trim() !== '') {
                     html += `📞 Телефон: ${item['Телефон']}<br>`;
                 }
                 
-                if (item['Адрес ЖК'] && item['Адрес ЖК'] !== '—') {
+                if (item['Адрес ЖК'] && item['Адрес ЖК'].trim() !== '') {
                     html += `📍 Адрес: ${item['Адрес ЖК']}`;
                 }
                 
@@ -200,7 +191,7 @@
             resultsDiv.innerHTML = html;
             
         } catch (err) {
-            resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}<br>Проверьте, что файл data.csv загружен в репозиторий</div>`;
+            resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}</div>`;
         }
     }
     
