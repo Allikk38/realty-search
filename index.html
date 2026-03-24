@@ -125,6 +125,16 @@
         }
         
         cachedData = data;
+        
+        // Отладка в консоль
+        console.log('=== ЗАГРУЖЕНО ДАННЫХ ===');
+        console.log('Всего записей:', data.length);
+        const viraRecords = data.filter(d => d['Застройщик'] && d['Застройщик'].includes('VIRA'));
+        console.log('Найдено записей с VIRA:', viraRecords.length);
+        if (viraRecords.length > 0) {
+            console.log('Первая запись VIRA:', viraRecords[0]);
+        }
+        
         return data;
     }
     
@@ -143,7 +153,6 @@
             const data = await loadData();
             const lowerQuery = query.toLowerCase();
             
-            // Ищем по трём полям
             const filtered = data.filter(item => {
                 const complex = (item['Название ЖК'] || '').toLowerCase();
                 const developer = (item['Застройщик'] || '').toLowerCase();
@@ -160,30 +169,18 @@
             
             let html = `<div class="success">🔍 Найдено: ${filtered.length}</div>`;
             
-            filtered.slice(0, 30).forEach(item => {
+            filtered.slice(0, 30).forEach((item, idx) => {
                 html += `<div class="result-card">`;
                 
-                // Всегда показываем Название ЖК, если оно есть (даже если оно —)
-                const complex = item['Название ЖК'];
-                if (complex && complex.trim() !== '') {
-                    html += `<strong>🏢 ${complex}</strong><br>`;
+                // Принудительно показываем ВСЕ поля, даже пустые
+                html += `<strong>🏢 Название ЖК:</strong> ${item['Название ЖК'] || '—'}<br>`;
+                html += `🏗 Застройщик: ${item['Застройщик'] || '—'}<br>`;
+                html += `👤 Менеджер: ${item['Менеджер'] || '—'}<br>`;
+                html += `📞 Телефон: ${item['Телефон'] || '—'}<br>`;
+                if (item['Адрес ЖК']) {
+                    html += `📍 Адрес: ${item['Адрес ЖК']}<br>`;
                 }
-                
-                if (item['Застройщик'] && item['Застройщик'].trim() !== '') {
-                    html += `🏗 Застройщик: ${item['Застройщик']}<br>`;
-                }
-                
-                if (item['Менеджер'] && item['Менеджер'].trim() !== '' && item['Менеджер'] !== 'Общий телефон') {
-                    html += `👤 Менеджер: ${item['Менеджер']}<br>`;
-                }
-                
-                if (item['Телефон'] && item['Телефон'].trim() !== '') {
-                    html += `📞 Телефон: ${item['Телефон']}<br>`;
-                }
-                
-                if (item['Адрес ЖК'] && item['Адрес ЖК'].trim() !== '') {
-                    html += `📍 Адрес: ${item['Адрес ЖК']}`;
-                }
+                html += `🏷 Должность: ${item['Должность/Тип'] || '—'}`;
                 
                 html += `</div>`;
             });
@@ -213,21 +210,4 @@
     });
 </script>
 </body>
-<script>
-    async function debug() {
-        const response = await fetch('data.csv');
-        const text = await response.text();
-        const lines = text.split('\n');
-        console.log('=== ДИАГНОСТИКА ===');
-        console.log('Всего строк:', lines.length);
-        
-        // Находим строки с VIRA
-        for (let i = 0; i < lines.length; i++) {
-            if (lines[i].toLowerCase().includes('vira')) {
-                console.log(`Строка ${i+1}:`, lines[i]);
-            }
-        }
-    }
-    debug();
-</script>    
 </html>
