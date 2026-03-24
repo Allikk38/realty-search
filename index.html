@@ -98,7 +98,10 @@
 
 <script>
     const SHEET_ID = '1bzpXYbwZjJdW0f-QgkCXJSmCqTuQ5PyaufbR7VBe-JE';
-    const SHEET_NAME = 'Лист';
+    const SHEET_NAME = 'Плоская_база';
+    
+    // ПРАВИЛЬНЫЕ ЗАГОЛОВКИ (задаём вручную, игнорируем то, что приходит из API)
+    const CORRECT_HEADERS = ['Застройщик', 'Название ЖК', 'Адрес ЖК', 'Менеджер', 'Телефон', 'Должность/Тип', 'Источник'];
     
     let cachedData = null;
     
@@ -118,14 +121,17 @@
         const json = JSON.parse(jsonStr);
         
         const rows = json.table.rows;
-        const headers = json.table.cols.map(col => col.label);
         
+        // Используем ПРАВИЛЬНЫЕ заголовки, игнорируем испорченные из API
         const data = [];
         for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
             const obj = {};
-            for (let j = 0; j < headers.length; j++) {
-                obj[headers[j]] = row.c[j] ? row.c[j].v : '';
+            // Берём первые 7 колонок (A-G)
+            for (let j = 0; j < CORRECT_HEADERS.length; j++) {
+                const value = row.c[j] ? row.c[j].v : '';
+                // Очищаем от лишних символов
+                obj[CORRECT_HEADERS[j]] = typeof value === 'string' ? value.trim() : value;
             }
             data.push(obj);
         }
@@ -159,7 +165,7 @@
             });
             
             if (filtered.length === 0) {
-                resultsDiv.innerHTML = '<div class="not-found">🤷‍♂️ Ничего не найдено</div>';
+                resultsDiv.innerHTML = '<div class="not-found">🤷‍♂️ Ничего не найдено<br>Попробуйте: Брусника, Авиатор, Расцветай</div>';
                 return;
             }
             
@@ -178,7 +184,7 @@
             resultsDiv.innerHTML = html;
             
         } catch (err) {
-            resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}</div>`;
+            resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}<br>Проверьте, что таблица опубликована</div>`;
         }
     }
     
