@@ -213,4 +213,21 @@
     });
 </script>
 </body>
+<script>
+    async function debug() {
+        const response = await fetch('data.csv');
+        const text = await response.text();
+        const lines = text.split('\n');
+        console.log('=== ДИАГНОСТИКА ===');
+        console.log('Всего строк:', lines.length);
+        
+        // Находим строки с VIRA
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].toLowerCase().includes('vira')) {
+                console.log(`Строка ${i+1}:`, lines[i]);
+            }
+        }
+    }
+    debug();
+</script>    
 </html>
