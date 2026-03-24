@@ -97,43 +97,44 @@
 </div>
 
 <script>
-    const SHEET_ID = '1bzpXYbwZjJdW0f-QgkCXJSmCqTuQ5PyaufbR7VBe-JE';
-    const SHEET_NAME = 'Плоская_база';
-    
-    // ПРАВИЛЬНЫЕ ЗАГОЛОВКИ (задаём вручную, игнорируем то, что приходит из API)
-    const CORRECT_HEADERS = ['Застройщик', 'Название ЖК', 'Адрес ЖК', 'Менеджер', 'Телефон', 'Должность/Тип', 'Источник'];
+    // ВСТАВЬ ССЫЛКУ НА ОПУБЛИКОВАННУЮ ТАБЛИЦУ (pubhtml)
+    const PUBLISHED_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSxKqKeWHbUfUNJovknQLG-0p1h0q0d6mwNzKzy5RMDLXNbJlTZgpDsgP-XkM_l1dO9hZRD3NRS75x6/pubhtml';
     
     let cachedData = null;
     
+    // Парсим HTML-таблицу из опубликованной ссылки
     async function loadData() {
         if (cachedData) return cachedData;
         
-        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${SHEET_NAME}`;
-        const response = await fetch(url);
+        const response = await fetch(PUBLISHED_URL);
+        const html = await response.text();
         
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: Таблица не доступна`);
-        }
+        // Парсим HTML
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
         
-        const text = await response.text();
-        // Убираем google.visualization.Query.setResponse( и последнюю )
-        const jsonStr = text.substring(47, text.length - 2);
-        const json = JSON.parse(jsonStr);
+        // Находим таблицу
+        const table = doc.querySelector('table');
+        if (!table) throw new Error('Таблица не найдена');
         
-        const rows = json.table.rows;
+        const rows = table.querySelectorAll('tr');
+        if (rows.length < 2) throw new Error('Нет данных');
         
-        // Используем ПРАВИЛЬНЫЕ заголовки, игнорируем испорченные из API
+        // Заголовки — первая строка
+        const headerCells = rows[0].querySelectorAll('th, td');
+        const headers = Array.from(headerCells).map(cell => cell.textContent.trim());
+        
+        // Данные — со второй строки
         const data = [];
-        for (let i = 0; i < rows.length; i++) {
-            const row = rows[i];
-            const obj = {};
-            // Берём первые 7 колонок (A-G)
-            for (let j = 0; j < CORRECT_HEADERS.length; j++) {
-                const value = row.c[j] ? row.c[j].v : '';
-                // Очищаем от лишних символов
-                obj[CORRECT_HEADERS[j]] = typeof value === 'string' ? value.trim() : value;
+        for (let i = 1; i < rows.length; i++) {
+            const cells = rows[i].querySelectorAll('td');
+            if (cells.length === 0) continue;
+            
+            const row = {};
+            for (let j = 0; j < headers.length; j++) {
+                row[headers[j]] = cells[j] ? cells[j].textContent.trim() : '';
             }
-            data.push(obj);
+            data.push(row);
         }
         
         cachedData = data;
@@ -184,7 +185,7 @@
             resultsDiv.innerHTML = html;
             
         } catch (err) {
-            resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}<br>Проверьте, что таблица опубликована</div>`;
+            resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}<br>Проверьте, что таблица опубликована как веб-страница</div>`;
         }
     }
     
@@ -195,7 +196,7 @@
             const data = await loadData();
             resultsDiv.innerHTML = `<div class="success">✅ Данные загружены! Найдено ${data.length} записей. Готов к поиску.</div>`;
         } catch (err) {
-            resultsDiv.innerHTML = `<div class="error">❌ ${err.message}<br>Проверьте, что таблица опубликована</div>`;
+            resultsDiv.innerHTML = `<div class="error">❌ ${err.message}<br>Убедитесь, что таблица опубликована как веб-страница</div>`;
         }
     }
     
