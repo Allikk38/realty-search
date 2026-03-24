@@ -4,27 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Поиск по базе ЖК</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="container">
-    <h1>🏢 Поиск по базе ЖК</h1>
-    <div class="sub">Ищи по названию ЖК, застройщику или менеджеру</div>
+    <h1>Поиск по базе ЖК</h1>
+    <div class="sub">Найдите контакты по названию ЖК, застройщику или менеджеру</div>
 
     <div class="search-box">
         <input type="text" id="searchInput" placeholder="Например: Брусника, Авиатор, КПД-Газстрой, VIRA, Денис Бородин..." autofocus>
         <select id="searchType">
-            <option value="all">🔍 Везде</option>
-            <option value="complex">🏢 Название ЖК</option>
-            <option value="developer">🏗 Застройщик</option>
-            <option value="manager">👤 Менеджер</option>
+            <option value="all"><i class="fas fa-search"></i> Везде</option>
+            <option value="complex"><i class="fas fa-building"></i> Название ЖК</option>
+            <option value="developer"><i class="fas fa-hard-hat"></i> Застройщик</option>
+            <option value="manager"><i class="fas fa-user-tie"></i> Менеджер</option>
         </select>
-        <button id="searchBtn">🔍 Найти</button>
+        <button id="searchBtn"><i class="fas fa-search"></i> Найти</button>
     </div>
 
     <div id="stats" class="stats" style="display: none;"></div>
     <div id="results">
-        <div class="loading">✨ Введите запрос для поиска</div>
+        <div class="loading">Введите запрос для поиска</div>
     </div>
     <div class="footer">
         Данные из Google Sheets | Обновление: ручное
