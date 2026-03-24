@@ -64,7 +64,7 @@
         .footer { font-size: 12px; color: #94a3b8; text-align: center; margin-top: 30px; }
         .success { background: #dcfce7; color: #166534; padding: 12px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
         .error { background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
-        .suggestion { background: #fef9c3; color: #854d0e; padding: 12px; border-radius: 12px; margin-bottom: 20px; text-align: center; font-size: 14px; }
+        .debug { background: #f1f5f9; color: #334155; padding: 8px; font-size: 12px; margin-bottom: 20px; border-radius: 8px; font-family: monospace; display: none; }
     </style>
 </head>
 <body>
@@ -73,7 +73,7 @@
     <div class="sub">Ищи по названию ЖК, застройщику или менеджеру</div>
 
     <div class="search-box">
-        <input type="text" id="searchInput" placeholder="Например: Брусника, Авиатор, Денис Бородин..." autofocus>
+        <input type="text" id="searchInput" placeholder="Например: Брусника, Авиатор, VIRA, Денис Бородин..." autofocus>
         <button id="searchBtn">🔍 Найти</button>
     </div>
 
@@ -87,76 +87,7 @@
 
 <script>
     let cachedData = null;
-    
-    // Функция нормализации текста (убираем акценты, приводим к нижнему регистру)
-    function normalizeText(text) {
-        if (!text) return '';
-        // Приводим к нижнему регистру
-        let normalized = text.toLowerCase();
-        // Заменяем распространённые варианты написания
-        const replacements = {
-            'вира': 'vira',
-            'vira': 'вира',
-            'цитатум': 'citatum',
-            'citatum': 'цитатум',
-            'ред фокс': 'red fox',
-            'red fox': 'ред фокс',
-            'фридом сити': 'freedom city',
-            'freedom city': 'фридом сити',
-            'авиатор': 'aviator',
-            'aviator': 'авиатор',
-            'брусника': 'brusnika',
-            'brusnika': 'брусника'
-        };
-        
-        // Применяем замены
-        for (let [key, value] of Object.entries(replacements)) {
-            if (normalized.includes(key)) {
-                normalized = normalized.replace(new RegExp(key, 'g'), value);
-            }
-        }
-        
-        return normalized;
-    }
-    
-    // Функция для поиска с учётом опечаток (расстояние Левенштейна)
-    function levenshteinDistance(a, b) {
-        if (a.length === 0) return b.length;
-        if (b.length === 0) return a.length;
-        
-        const matrix = [];
-        for (let i = 0; i <= b.length; i++) {
-            matrix[i] = [i];
-        }
-        for (let j = 0; j <= a.length; j++) {
-            matrix[0][j] = j;
-        }
-        
-        for (let i = 1; i <= b.length; i++) {
-            for (let j = 1; j <= a.length; j++) {
-                if (b.charAt(i-1) === a.charAt(j-1)) {
-                    matrix[i][j] = matrix[i-1][j-1];
-                } else {
-                    matrix[i][j] = Math.min(
-                        matrix[i-1][j-1] + 1,
-                        matrix[i][j-1] + 1,
-                        matrix[i-1][j] + 1
-                    );
-                }
-            }
-        }
-        return matrix[b.length][a.length];
-    }
-    
-    // Проверка похожести строк (допускаем опечатки до 2 символов или 20% длины)
-    function isSimilar(str1, str2) {
-        if (!str1 || !str2) return false;
-        const len1 = str1.length;
-        const len2 = str2.length;
-        const distance = levenshteinDistance(str1, str2);
-        const maxDistance = Math.min(3, Math.max(len1, len2) * 0.3);
-        return distance <= maxDistance;
-    }
+    let debugMode = false; // включи, если нужно отладить
     
     async function loadData() {
         if (cachedData) return cachedData;
@@ -196,6 +127,14 @@
         }
         
         cachedData = data;
+        
+        // Отладочный вывод в консоль (только если включён debugMode)
+        if (debugMode) {
+            console.log('Загружено записей:', data.length);
+            console.log('Пример первой записи:', data[0]);
+            console.log('Все застройщики:', [...new Set(data.map(d => d['Застройщик']))].slice(0, 20));
+        }
+        
         return data;
     }
     
@@ -212,91 +151,56 @@
         
         try {
             const data = await loadData();
-            const normalizedQuery = normalizeText(query);
+            const lowerQuery = query.toLowerCase();
             
-            // Точный поиск
-            let exactMatches = data.filter(item => {
-                const complex = normalizeText(item['Название ЖК'] || '');
-                const developer = normalizeText(item['Застройщик'] || '');
-                const manager = normalizeText(item['Менеджер'] || '');
-                return complex.includes(normalizedQuery) ||
-                       developer.includes(normalizedQuery) ||
-                       manager.includes(normalizedQuery);
+            // Ищем по трём полям (регистронезависимо)
+            const filtered = data.filter(item => {
+                const complex = (item['Название ЖК'] || '').toLowerCase();
+                const developer = (item['Застройщик'] || '').toLowerCase();
+                const manager = (item['Менеджер'] || '').toLowerCase();
+                return complex.includes(lowerQuery) ||
+                       developer.includes(lowerQuery) ||
+                       manager.includes(lowerQuery);
             });
             
-            // Если точных совпадений нет — ищем с учётом опечаток
-            let fuzzyMatches = [];
-            let suggestions = [];
-            
-            if (exactMatches.length === 0) {
-                // Собираем уникальные значения для поиска похожих
-                const uniqueValues = new Set();
-                data.forEach(item => {
-                    if (item['Название ЖК']) uniqueValues.add(item['Название ЖК']);
-                    if (item['Застройщик']) uniqueValues.add(item['Застройщик']);
-                    if (item['Менеджер']) uniqueValues.add(item['Менеджер']);
-                });
-                
-                // Ищем похожие варианты
-                for (let value of uniqueValues) {
-                    const normalizedValue = normalizeText(value);
-                    if (isSimilar(normalizedValue, normalizedQuery)) {
-                        suggestions.push(value);
-                        if (suggestions.length >= 3) break;
-                    }
-                }
-                
-                // Если нашли похожие, ищем по ним
-                if (suggestions.length > 0) {
-                    const suggestionQuery = suggestions[0];
-                    fuzzyMatches = data.filter(item => {
-                        const complex = item['Название ЖК'] || '';
-                        const developer = item['Застройщик'] || '';
-                        const manager = item['Менеджер'] || '';
-                        return complex === suggestionQuery ||
-                               developer === suggestionQuery ||
-                               manager === suggestionQuery;
-                    }).slice(0, 5);
-                }
-            }
-            
-            const results = exactMatches.length > 0 ? exactMatches : fuzzyMatches;
-            
-            if (results.length === 0) {
-                let suggestionHtml = '';
-                if (suggestions.length > 0) {
-                    suggestionHtml = `<div class="suggestion">💡 Возможно, вы искали: <strong>${suggestions[0]}</strong>? Попробуйте этот вариант.</div>`;
-                }
-                resultsDiv.innerHTML = `
-                    <div class="not-found">
-                        🤷‍♂️ Ничего не найдено по запросу "${query}"<br>
-                        ${suggestionHtml}
-                        <br>Совет: проверьте регистр или попробуйте сократить запрос
-                    </div>
-                `;
+            if (filtered.length === 0) {
+                resultsDiv.innerHTML = '<div class="not-found">🤷‍♂️ Ничего не найдено<br>Проверьте написание или попробуйте другой запрос</div>';
                 return;
             }
             
-            let html = `<div class="success">🔍 Найдено: ${results.length}</div>`;
-            if (exactMatches.length === 0 && fuzzyMatches.length > 0) {
-                html += `<div class="suggestion">💡 Найдено по похожему названию: "${suggestions[0]}"</div>`;
-            }
+            let html = `<div class="success">🔍 Найдено: ${filtered.length}</div>`;
             
-            results.slice(0, 20).forEach(item => {
-                html += `
-                    <div class="result-card">
-                        <strong>🏢 ${item['Название ЖК'] || '—'}</strong><br>
-                        🏗 Застройщик: ${item['Застройщик'] || '—'}<br>
-                        👤 Менеджер: ${item['Менеджер'] || '—'}<br>
-                        ${item['Телефон'] ? `📞 Телефон: ${item['Телефон']}<br>` : ''}
-                        ${item['Адрес ЖК'] ? `📍 Адрес: ${item['Адрес ЖК']}` : ''}
-                    </div>
-                `;
+            filtered.slice(0, 30).forEach(item => {
+                // Показываем только заполненные поля
+                html += `<div class="result-card">`;
+                
+                if (item['Название ЖК'] && item['Название ЖК'] !== '—') {
+                    html += `<strong>🏢 ${item['Название ЖК']}</strong><br>`;
+                }
+                
+                if (item['Застройщик'] && item['Застройщик'] !== '—') {
+                    html += `🏗 Застройщик: ${item['Застройщик']}<br>`;
+                }
+                
+                if (item['Менеджер'] && item['Менеджер'] !== '—' && item['Менеджер'] !== 'Общий телефон') {
+                    html += `👤 Менеджер: ${item['Менеджер']}<br>`;
+                }
+                
+                if (item['Телефон'] && item['Телефон'] !== '—') {
+                    html += `📞 Телефон: ${item['Телефон']}<br>`;
+                }
+                
+                if (item['Адрес ЖК'] && item['Адрес ЖК'] !== '—') {
+                    html += `📍 Адрес: ${item['Адрес ЖК']}`;
+                }
+                
+                html += `</div>`;
             });
+            
             resultsDiv.innerHTML = html;
             
         } catch (err) {
-            resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}</div>`;
+            resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}<br>Проверьте, что файл data.csv загружен в репозиторий</div>`;
         }
     }
     
