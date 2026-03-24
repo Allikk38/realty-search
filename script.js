@@ -253,7 +253,7 @@ async function search() {
         let fuzzyMatches = [];
         let suggestions = [];
         let gptUsed = false;
-        let gptValue = '';
+        let gptMessage = '';
         
         // Если точных совпадений нет — пробуем GPT
         if (exactMatches.length === 0) {
@@ -276,7 +276,7 @@ async function search() {
                     if (gptMatches.length > 0) {
                         exactMatches = gptMatches;
                         gptUsed = true;
-                        gptValue = `${gptResult.type} — ${gptResult.value}`;
+                        gptMessage = `${gptResult.type} — ${gptResult.value}`;
                     }
                 }
             }
@@ -342,10 +342,12 @@ async function search() {
         
         let html = '';
         
-        // Подсказка от Алисы
+        // Подсказка от Алисы (если использовалась)
         if (gptUsed) {
-            html += `<div class="suggestion"><i class="fas fa-magic"></i> Алиса подсказала: ищем "${gptValue}"</div>`;
-        } else if (exactMatches.length === 0 && fuzzyMatches.length > 0) {
+            html += `<div class="suggestion"><i class="fas fa-magic"></i> Алиса подсказала: ищем "${gptMessage}"</div>`;
+        }
+        // Подсказка от fuzzy-поиска
+        else if (exactMatches.length === 0 && fuzzyMatches.length > 0) {
             html += `<div class="suggestion"><i class="fas fa-lightbulb"></i> Найдено по похожему названию: "${suggestions[0]}"</div>`;
         }
         
