@@ -1,6 +1,42 @@
 let cachedData = null;
 let lastUpdateDate = null;
 
+// ========== АНИМАЦИИ ЗАГРУЗКИ ==========
+function showSkeleton() {
+    const resultsDiv = document.getElementById('results');
+    const skeletonHtml = `
+        <div class="skeleton-card">
+            <div class="skeleton-title"></div>
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
+            <div class="skeleton-line"></div>
+        </div>
+        <div class="skeleton-card">
+            <div class="skeleton-title"></div>
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
+            <div class="skeleton-line"></div>
+        </div>
+        <div class="skeleton-card">
+            <div class="skeleton-title"></div>
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
+            <div class="skeleton-line"></div>
+        </div>
+    `;
+    resultsDiv.innerHTML = skeletonHtml;
+}
+
+function showSpinner() {
+    const resultsDiv = document.getElementById('results');
+    resultsDiv.innerHTML = `
+        <div class="loading">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Загрузка данных...</div>
+        </div>
+    `;
+}
+
 // ========== УМНАЯ НОРМАЛИЗАЦИЯ ==========
 function normalizeForSearch(text) {
     if (!text) return '';
@@ -120,7 +156,7 @@ async function search() {
         return;
     }
     
-    resultsDiv.innerHTML = '<div class="loading">⏳ Поиск...</div>';
+    showSpinner();
     
     try {
         const data = await loadData();
@@ -250,8 +286,7 @@ async function search() {
 }
 
 async function check() {
-    const resultsDiv = document.getElementById('results');
-    resultsDiv.innerHTML = '<div class="loading">🔍 Загрузка данных...</div>';
+    showSpinner();
     try {
         const data = await loadData();
         document.getElementById('stats').style.display = 'flex';
@@ -260,6 +295,7 @@ async function check() {
             <span>✅ Готов к поиску</span>
             <span>📅 Обновлено: ${lastUpdateDate.toLocaleDateString()}</span>
         `;
+        const resultsDiv = document.getElementById('results');
         resultsDiv.innerHTML = '<div class="success">✅ Данные загружены! Введите запрос для поиска.</div>';
     } catch (err) {
         resultsDiv.innerHTML = `<div class="error">❌ ${err.message}<br>Файл data.csv не найден</div>`;
