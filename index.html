@@ -63,14 +63,6 @@
             border: 1px solid #e2e8f0;
         }
         .result-card strong { color: #0f172a; }
-        .badge {
-            display: inline-block;
-            background: #e2e8f0;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 12px;
-            margin-top: 8px;
-        }
         .not-found { text-align: center; padding: 40px; color: #64748b; }
         .loading { text-align: center; padding: 40px; color: #3b82f6; }
         .footer { font-size: 12px; color: #94a3b8; text-align: center; margin-top: 30px; }
@@ -102,20 +94,26 @@
     async function loadData() {
         if (cachedData) return cachedData;
         
+        console.log('Загружаю data.csv...');
         const response = await fetch('data.csv');
-        if (!response.ok) throw new Error('Файл data.csv не найден');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: файл data.csv не найден`);
+        }
         
         const csvText = await response.text();
+        console.log('CSV загружен, длина:', csvText.length);
         
         // Парсим CSV
         const lines = csvText.split('\n');
         const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+        console.log('Заголовки:', headers);
         
         const data = [];
         for (let i = 1; i < lines.length; i++) {
             if (!lines[i].trim()) continue;
             
-            // Простой парсинг CSV с учётом кавычек
+            // Парсим строку с учётом кавычек
             const row = [];
             let inQuotes = false;
             let current = '';
@@ -134,12 +132,13 @@
             
             const obj = {};
             for (let j = 0; j < headers.length; j++) {
-                const value = row[j] ? row[j].replace(/^"|"$/g, '') : '';
+                let value = row[j] ? row[j].replace(/^"|"$/g, '') : '';
                 obj[headers[j]] = value;
             }
             data.push(obj);
         }
         
+        console.log('Загружено записей:', data.length);
         cachedData = data;
         return data;
     }
@@ -188,6 +187,7 @@
             resultsDiv.innerHTML = html;
             
         } catch (err) {
+            console.error('Ошибка:', err);
             resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}<br>Убедитесь, что файл data.csv загружен в репозиторий</div>`;
         }
     }
@@ -199,7 +199,8 @@
             const data = await loadData();
             resultsDiv.innerHTML = `<div class="success">✅ Данные загружены! Найдено ${data.length} записей. Готов к поиску.</div>`;
         } catch (err) {
-            resultsDiv.innerHTML = `<div class="error">❌ ${err.message}<br>Файл data.csv не найден</div>`;
+            console.error('Ошибка загрузки:', err);
+            resultsDiv.innerHTML = `<div class="error">❌ ${err.message}<br>Файл data.csv не найден или повреждён</div>`;
         }
     }
     
