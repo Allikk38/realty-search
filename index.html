@@ -117,7 +117,12 @@
 </div>
 
 <script>
-    // 👇 ВСТАВЬ СВОЙ ID ТАБЛИЦЫ
+// Отладка: показываем ошибки в консоли браузера
+window.onerror = function(msg, url, line, col, error) {
+    console.error('Ошибка:', msg, error);
+    document.getElementById('results').innerHTML = `<div class="not-found">❌ Ошибка: ${msg}<br>Открой консоль (F12) для деталей</div>`;
+    return true;
+};
     const SHEET_ID = '119VPB-mAMign9y9Ze4vQYxmoA_6a_bdIzdvM-yVDwGU'; // ЗАМЕНИ НА СВОЙ
     const SHEET_NAME = 'Плоская_база';
     
