@@ -237,6 +237,7 @@ async function search() {
         const data = await loadData();
         const normalizedQuery = normalizeForSearch(query);
         
+        // 1. Сначала ищем точные совпадения
         let exactMatches = data.filter(item => {
             const complex = normalizeForSearch(item['Название ЖК'] || '');
             const developer = normalizeForSearch(item['Застройщик'] || '');
@@ -255,9 +256,9 @@ async function search() {
         let gptUsed = false;
         let gptMessage = '';
         
-        // Если точных совпадений нет — пробуем GPT
+        // 2. Если точных совпадений нет — вызываем Алису
         if (exactMatches.length === 0) {
-            console.log('Точных совпадений нет, пробуем GPT...');
+            console.log('Точных совпадений нет, вызываем GPT для запроса:', query);
             const gptResult = await semanticSearchWithGPT(query);
             
             if (gptResult && gptResult.value && !gptResult.error) {
@@ -282,7 +283,7 @@ async function search() {
             }
         }
         
-        // Если GPT не помог — ищем похожие
+        // 3. Если Алиса не помогла — ищем похожие по расстоянию Левенштейна
         if (exactMatches.length === 0) {
             const allComplexes = [...new Set(data.map(d => d['Название ЖК']).filter(Boolean))];
             const allDevelopers = [...new Set(data.map(d => d['Застройщик']).filter(Boolean))];
@@ -342,12 +343,9 @@ async function search() {
         
         let html = '';
         
-        // Подсказка от Алисы (если использовалась)
         if (gptUsed) {
             html += `<div class="suggestion"><i class="fas fa-magic"></i> Алиса подсказала: ищем "${gptMessage}"</div>`;
-        }
-        // Подсказка от fuzzy-поиска
-        else if (exactMatches.length === 0 && fuzzyMatches.length > 0) {
+        } else if (exactMatches.length === 0 && fuzzyMatches.length > 0) {
             html += `<div class="suggestion"><i class="fas fa-lightbulb"></i> Найдено по похожему названию: "${suggestions[0]}"</div>`;
         }
         
@@ -393,6 +391,7 @@ async function search() {
         });
         
     } catch (err) {
+        console.error('Ошибка поиска:', err);
         resultsDiv.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> Ошибка: ${err.message}</div>`;
         statsDiv.style.display = 'none';
         shareBtn.style.display = 'none';
@@ -414,6 +413,7 @@ async function check() {
         
         loadParamsFromUrl();
     } catch (err) {
+        console.error('Ошибка загрузки:', err);
         resultsDiv.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${err.message}<br>Файл data.csv не найден</div>`;
     }
 }
