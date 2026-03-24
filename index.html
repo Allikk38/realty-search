@@ -97,13 +97,11 @@
 </div>
 
 <script>
-    // 👇 ВСТАВЬ СВОЙ ID ТАБЛИЦЫ (между /d/ и /edit)
     const SHEET_ID = '119VPB-mAMign9y9Ze4vQYxmoA_6a_bdIzdvM-yVDwGU';
     const SHEET_NAME = 'Плоская_база';
     
     let cachedData = null;
     
-    // Загрузка данных
     async function loadData() {
         if (cachedData) return cachedData;
         
@@ -111,21 +109,24 @@
         const response = await fetch(url);
         
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: Таблица не опубликована или ID неправильный`);
+            throw new Error(`HTTP ${response.status}: Таблица не доступна`);
         }
         
         const text = await response.text();
-        // Парсим JSONP
-        const jsonData = JSON.parse(text.substring(47, text.length - 2));
-        const rows = jsonData.table.rows;
-        const headers = jsonData.table.cols.map(col => col.label);
+        // Убираем google.visualization.Query.setResponse( и последнюю )
+        const jsonStr = text.substring(47, text.length - 2);
+        const json = JSON.parse(jsonStr);
+        
+        const rows = json.table.rows;
+        const headers = json.table.cols.map(col => col.label);
         
         const data = [];
-        for (let row of rows) {
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
             const obj = {};
-            headers.forEach((h, idx) => {
-                obj[h] = row.c[idx] ? row.c[idx].v : '';
-            });
+            for (let j = 0; j < headers.length; j++) {
+                obj[headers[j]] = row.c[j] ? row.c[j].v : '';
+            }
             data.push(obj);
         }
         
@@ -133,7 +134,6 @@
         return data;
     }
     
-    // Поиск
     async function search() {
         const query = document.getElementById('searchInput').value.trim();
         const resultsDiv = document.getElementById('results');
@@ -143,24 +143,27 @@
             return;
         }
         
-        resultsDiv.innerHTML = '<div class="loading">⏳ Загружаю данные и ищу...</div>';
+        resultsDiv.innerHTML = '<div class="loading">⏳ Поиск...</div>';
         
         try {
             const data = await loadData();
             const lowerQuery = query.toLowerCase();
             
             const filtered = data.filter(item => {
-                return (item['Название ЖК'] && item['Название ЖК'].toLowerCase().includes(lowerQuery)) ||
-                       (item['Застройщик'] && item['Застройщик'].toLowerCase().includes(lowerQuery)) ||
-                       (item['Менеджер'] && item['Менеджер'].toLowerCase().includes(lowerQuery));
+                const complex = item['Название ЖК'] || '';
+                const developer = item['Застройщик'] || '';
+                const manager = item['Менеджер'] || '';
+                return complex.toLowerCase().includes(lowerQuery) ||
+                       developer.toLowerCase().includes(lowerQuery) ||
+                       manager.toLowerCase().includes(lowerQuery);
             });
             
             if (filtered.length === 0) {
-                resultsDiv.innerHTML = '<div class="not-found">🤷‍♂️ Ничего не найдено<br>Попробуйте: Брусника, Авиатор, Расцветай</div>';
+                resultsDiv.innerHTML = '<div class="not-found">🤷‍♂️ Ничего не найдено</div>';
                 return;
             }
             
-            let html = `<div class="success">🔍 Найдено: ${filtered.length} результатов</div>`;
+            let html = `<div class="success">🔍 Найдено: ${filtered.length}</div>`;
             filtered.slice(0, 20).forEach(item => {
                 html += `
                     <div class="result-card">
@@ -169,33 +172,28 @@
                         👤 Менеджер: ${item['Менеджер'] || '—'}<br>
                         ${item['Телефон'] ? `📞 Телефон: ${item['Телефон']}<br>` : ''}
                         ${item['Адрес ЖК'] ? `📍 Адрес: ${item['Адрес ЖК']}` : ''}
-                        ${item['Должность/Тип'] ? `<div class="badge">${item['Должность/Тип']}</div>` : ''}
                     </div>
                 `;
             });
             resultsDiv.innerHTML = html;
             
         } catch (err) {
-            resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}<br><br>Проверьте:<br>1. Таблица опубликована (Файл → Опубликовать в интернете)<br>2. ID таблицы правильный<br>3. Лист называется "${SHEET_NAME}"</div>`;
+            resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}</div>`;
         }
     }
     
-    // Проверка при загрузке страницы
     async function checkConnection() {
         const resultsDiv = document.getElementById('results');
-        resultsDiv.innerHTML = '<div class="loading">🔍 Проверяю доступ к таблице...</div>';
+        resultsDiv.innerHTML = '<div class="loading">🔍 Загрузка данных...</div>';
         try {
             const data = await loadData();
             resultsDiv.innerHTML = `<div class="success">✅ Данные загружены! Найдено ${data.length} записей. Готов к поиску.</div>`;
         } catch (err) {
-            resultsDiv.innerHTML = `<div class="error">❌ ${err.message}</div>`;
+            resultsDiv.innerHTML = `<div class="error">❌ ${err.message}<br>Проверьте, что таблица опубликована</div>`;
         }
     }
     
-    // Запускаем проверку
     checkConnection();
-    
-    // Подключаем кнопку
     document.getElementById('searchBtn').addEventListener('click', search);
     document.getElementById('searchInput').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') search();
