@@ -19,10 +19,7 @@
             padding: 30px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.05);
         }
-        h1 {
-            margin: 0 0 8px 0;
-            color: #1e293b;
-        }
+        h1 { margin: 0 0 8px 0; color: #1e293b; }
         .sub {
             color: #64748b;
             margin-bottom: 30px;
@@ -42,7 +39,6 @@
             border: 1px solid #e2e8f0;
             border-radius: 40px;
             outline: none;
-            transition: 0.2s;
         }
         input:focus {
             border-color: #3b82f6;
@@ -57,11 +53,8 @@
             border-radius: 40px;
             cursor: pointer;
             font-weight: 500;
-            transition: 0.2s;
         }
-        button:hover {
-            background: #2563eb;
-        }
+        button:hover { background: #2563eb; }
         .result-card {
             background: #f8fafc;
             border-radius: 16px;
@@ -69,9 +62,7 @@
             margin-bottom: 16px;
             border: 1px solid #e2e8f0;
         }
-        .result-card strong {
-            color: #0f172a;
-        }
+        .result-card strong { color: #0f172a; }
         .badge {
             display: inline-block;
             background: #e2e8f0;
@@ -80,22 +71,11 @@
             font-size: 12px;
             margin-top: 8px;
         }
-        .not-found {
-            text-align: center;
-            padding: 40px;
-            color: #64748b;
-        }
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #3b82f6;
-        }
-        .footer {
-            font-size: 12px;
-            color: #94a3b8;
-            text-align: center;
-            margin-top: 30px;
-        }
+        .not-found { text-align: center; padding: 40px; color: #64748b; }
+        .loading { text-align: center; padding: 40px; color: #3b82f6; }
+        .footer { font-size: 12px; color: #94a3b8; text-align: center; margin-top: 30px; }
+        .success { background: #dcfce7; color: #166534; padding: 12px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
+        .error { background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
     </style>
 </head>
 <body>
@@ -112,24 +92,30 @@
         <div class="loading">✨ Введите запрос для поиска</div>
     </div>
     <div class="footer">
-        База обновляется из Google Sheets автоматически
+        Данные из Google Sheets
     </div>
 </div>
 
 <script>
-// Отладка: показываем ошибки в консоли браузера
-window.onerror = function(msg, url, line, col, error) {
-    console.error('Ошибка:', msg, error);
-    document.getElementById('results').innerHTML = `<div class="not-found">❌ Ошибка: ${msg}<br>Открой консоль (F12) для деталей</div>`;
-    return true;
-};
-    const SHEET_ID = '119VPB-mAMign9y9Ze4vQYxmoA_6a_bdIzdvM-yVDwGU'; // ЗАМЕНИ НА СВОЙ
+    // 👇 ВСТАВЬ СВОЙ ID ТАБЛИЦЫ (между /d/ и /edit)
+    const SHEET_ID = '119VPB-mAMign9y9Ze4vQYxmoA_6a_bdIzdvM-yVDwGU'; // ЗАМЕНИ
     const SHEET_NAME = 'Плоская_база';
     
+    let cachedData = null;
+    
+    // Загрузка данных
     async function loadData() {
+        if (cachedData) return cachedData;
+        
         const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${SHEET_NAME}`;
         const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: Таблица не опубликована или ID неправильный`);
+        }
+        
         const text = await response.text();
+        // Парсим JSONP
         const jsonData = JSON.parse(text.substring(47, text.length - 2));
         const rows = jsonData.table.rows;
         const headers = jsonData.table.cols.map(col => col.label);
@@ -142,9 +128,12 @@ window.onerror = function(msg, url, line, col, error) {
             });
             data.push(obj);
         }
+        
+        cachedData = data;
         return data;
     }
     
+    // Поиск
     async function search() {
         const query = document.getElementById('searchInput').value.trim();
         const resultsDiv = document.getElementById('results');
@@ -154,7 +143,7 @@ window.onerror = function(msg, url, line, col, error) {
             return;
         }
         
-        resultsDiv.innerHTML = '<div class="loading">⏳ Ищем...</div>';
+        resultsDiv.innerHTML = '<div class="loading">⏳ Загружаю данные и ищу...</div>';
         
         try {
             const data = await loadData();
@@ -167,29 +156,46 @@ window.onerror = function(msg, url, line, col, error) {
             });
             
             if (filtered.length === 0) {
-                resultsDiv.innerHTML = '<div class="not-found">🤷‍♂️ Ничего не найдено<br>Попробуйте другой запрос</div>';
+                resultsDiv.innerHTML = '<div class="not-found">🤷‍♂️ Ничего не найдено<br>Попробуйте: Брусника, Авиатор, Расцветай</div>';
                 return;
             }
             
-            let html = `<div style="margin-bottom: 16px;">🔍 Найдено: ${filtered.length}</div>`;
+            let html = `<div class="success">🔍 Найдено: ${filtered.length} результатов</div>`;
             filtered.slice(0, 20).forEach(item => {
                 html += `
                     <div class="result-card">
                         <strong>🏢 ${item['Название ЖК'] || '—'}</strong><br>
                         🏗 Застройщик: ${item['Застройщик'] || '—'}<br>
                         👤 Менеджер: ${item['Менеджер'] || '—'}<br>
-                        ${item['Телефон'] ? `📞 ${item['Телефон']}<br>` : ''}
-                        ${item['Адрес ЖК'] ? `📍 ${item['Адрес ЖК']}` : ''}
+                        ${item['Телефон'] ? `📞 Телефон: ${item['Телефон']}<br>` : ''}
+                        ${item['Адрес ЖК'] ? `📍 Адрес: ${item['Адрес ЖК']}` : ''}
                         ${item['Должность/Тип'] ? `<div class="badge">${item['Должность/Тип']}</div>` : ''}
                     </div>
                 `;
             });
             resultsDiv.innerHTML = html;
+            
         } catch (err) {
-            resultsDiv.innerHTML = `<div class="not-found">❌ Ошибка загрузки данных: ${err.message}<br>Проверьте, что таблица опубликована</div>`;
+            resultsDiv.innerHTML = `<div class="error">❌ Ошибка: ${err.message}<br><br>Проверьте:<br>1. Таблица опубликована (Файл → Опубликовать в интернете)<br>2. ID таблицы правильный<br>3. Лист называется "${SHEET_NAME}"</div>`;
         }
     }
     
+    // Проверка при загрузке страницы
+    async function checkConnection() {
+        const resultsDiv = document.getElementById('results');
+        resultsDiv.innerHTML = '<div class="loading">🔍 Проверяю доступ к таблице...</div>';
+        try {
+            const data = await loadData();
+            resultsDiv.innerHTML = `<div class="success">✅ Данные загружены! Найдено ${data.length} записей. Готов к поиску.</div>`;
+        } catch (err) {
+            resultsDiv.innerHTML = `<div class="error">❌ ${err.message}</div>`;
+        }
+    }
+    
+    // Запускаем проверку
+    checkConnection();
+    
+    // Подключаем кнопку
     document.getElementById('searchBtn').addEventListener('click', search);
     document.getElementById('searchInput').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') search();
