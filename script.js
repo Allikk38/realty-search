@@ -154,6 +154,33 @@ async function loadData() {
     return data;
 }
 
+// ========== ВЫЗОВ YANDEXGPT ==========
+async function semanticSearchWithGPT(query) {
+    const functionUrl = 'https://functions.yandexcloud.net/d4e8ml02jm9jo70umv0h';
+    
+    try {
+        const response = await fetch(functionUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ query: query })
+        });
+        
+        if (!response.ok) {
+            console.error('GPT функция вернула ошибку:', response.status);
+            return null;
+        }
+        
+        const data = await response.json();
+        console.log('GPT ответ:', data);
+        return data;
+    } catch (err) {
+        console.error('Ошибка вызова GPT:', err);
+        return null;
+    }
+}
+
 // ========== ГЕНЕРАЦИЯ ССЫЛКИ ДЛЯ ПОДЕЛИТЬСЯ ==========
 function generateShareLink() {
     const url = new URL(window.location.href);
@@ -193,7 +220,6 @@ async function search() {
     const statsDiv = document.getElementById('stats');
     const shareBtn = document.getElementById('shareBtn');
     
-    // Сохраняем для поделиться
     lastSearchQuery = query;
     lastSearchType = searchType;
     
@@ -227,6 +253,34 @@ async function search() {
         let fuzzyMatches = [];
         let suggestions = [];
         
+        // Если точных совпадений нет — пробуем GPT
+        if (exactMatches.length === 0) {
+            console.log('Точных совпадений нет, пробуем GPT...');
+            const gptResult = await semanticSearchWithGPT(query);
+            
+            if (gptResult && gptResult.value && !gptResult.error) {
+                let searchField = '';
+                if (gptResult.type === 'ЖК') searchField = 'Название ЖК';
+                else if (gptResult.type === 'застройщик') searchField = 'Застройщик';
+                else if (gptResult.type === 'менеджер') searchField = 'Менеджер';
+                else if (gptResult.type === 'semantic') searchField = 'Адрес ЖК';
+                
+                if (searchField) {
+                    const gptMatches = data.filter(item => {
+                        const fieldValue = item[searchField] || '';
+                        return normalizeForSearch(fieldValue).includes(normalizeForSearch(gptResult.value));
+                    });
+                    
+                    if (gptMatches.length > 0) {
+                        exactMatches = gptMatches;
+                        // Добавляем подсказку
+                        resultsDiv.innerHTML = `<div class="suggestion"><i class="fas fa-magic"></i> Алиса подсказала: ищем "${gptResult.type} — ${gptResult.value}"</div>`;
+                    }
+                }
+            }
+        }
+        
+        // Если GPT не помог — ищем похожие
         if (exactMatches.length === 0) {
             const allComplexes = [...new Set(data.map(d => d['Название ЖК']).filter(Boolean))];
             const allDevelopers = [...new Set(data.map(d => d['Застройщик']).filter(Boolean))];
@@ -313,7 +367,7 @@ async function search() {
             html += `</div>`;
         });
         
-        resultsDiv.innerHTML = html;
+        resultsDiv.innerHTML = (resultsDiv.innerHTML || '') + html;
         shareBtn.style.display = 'inline-flex';
         
         document.querySelectorAll('.copy-btn').forEach(btn => {
