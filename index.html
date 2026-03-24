@@ -116,7 +116,7 @@
     <div class="sub">Ищи по названию ЖК, застройщику или менеджеру</div>
 
     <div class="search-box">
-        <input type="text" id="searchInput" placeholder="Например: Брусника, Авиатор, VIRA, Денис Бородин..." autofocus>
+        <input type="text" id="searchInput" placeholder="Например: Брусника, Авиатор, КПД-Газстрой, VIRA, Денис Бородин..." autofocus>
         <select id="searchType">
             <option value="all">🔍 Везде</option>
             <option value="complex">🏢 Название ЖК</option>
@@ -139,6 +139,53 @@
     let cachedData = null;
     let lastUpdateDate = null;
     
+    // ========== УМНАЯ НОРМАЛИЗАЦИЯ ==========
+    function normalizeForSearch(text) {
+        if (!text) return '';
+        
+        let normalized = text.toLowerCase().trim();
+        
+        // Убираем лишние пробелы
+        normalized = normalized.replace(/\s+/g, ' ');
+        
+        // Убираем дефисы, тире, точки
+        normalized = normalized.replace(/[-–—.\/\\]/g, ' ');
+        
+        // Убираем знаки препинания
+        normalized = normalized.replace(/[()\"'`]/g, '');
+        
+        // Специальные правила для застройщиков (словарь)
+        const replacements = {
+            'кпд газстрой': 'кпд-газстрой',
+            'кпдгазстрой': 'кпд-газстрой',
+            'гпд газстрой': 'кпд-газстрой',
+            'гпдгазстрой': 'кпд-газстрой',
+            'кпд газстройй': 'кпд-газстрой',
+            'газстрой': 'кпд-газстрой',
+            'вира': 'vira',
+            'vira': 'вира',
+            'расцветай': 'расцветай',
+            'расцветай на красном': 'расцветай на красном',
+            'расцветай на зорге': 'расцветай на зорге',
+            'брусника': 'брусника',
+            'страна девелопмент': 'страна.девелопмент',
+            'страна береговая': 'страна.береговая',
+            'ред фокс': 'red fox',
+            'redfox': 'red fox',
+            'фридом сити': 'freedom city',
+            'счастье в кольцово': 'счастье в кольцово'
+        };
+        
+        // Применяем замены
+        for (let [key, value] of Object.entries(replacements)) {
+            if (normalized.includes(key)) {
+                normalized = normalized.replace(new RegExp(key, 'g'), value);
+            }
+        }
+        
+        return normalized;
+    }
+    
     // Расстояние Левенштейна для опечаток
     function levenshteinDistance(a, b) {
         if (a.length === 0) return b.length;
@@ -156,6 +203,15 @@
             }
         }
         return matrix[b.length][a.length];
+    }
+    
+    // Проверка похожести строк
+    function isSimilar(str1, str2) {
+        if (!str1 || !str2) return false;
+        const distance = levenshteinDistance(str1, str2);
+        const maxLen = Math.max(str1.length, str2.length);
+        const maxDistance = Math.min(3, Math.floor(maxLen * 0.3));
+        return distance <= maxDistance;
     }
     
     async function loadData() {
@@ -216,41 +272,71 @@
         
         try {
             const data = await loadData();
-            const lowerQuery = query.toLowerCase();
+            const normalizedQuery = normalizeForSearch(query);
             
-            const filtered = data.filter(item => {
-                const complex = (item['Название ЖК'] || '').toLowerCase();
-                const developer = (item['Застройщик'] || '').toLowerCase();
-                const manager = (item['Менеджер'] || '').toLowerCase();
+            // Точный поиск с нормализацией
+            let exactMatches = data.filter(item => {
+                const complex = normalizeForSearch(item['Название ЖК'] || '');
+                const developer = normalizeForSearch(item['Застройщик'] || '');
+                const manager = normalizeForSearch(item['Менеджер'] || '');
                 
                 switch(searchType) {
-                    case 'complex': return complex.includes(lowerQuery);
-                    case 'developer': return developer.includes(lowerQuery);
-                    case 'manager': return manager.includes(lowerQuery);
-                    default: return complex.includes(lowerQuery) || developer.includes(lowerQuery) || manager.includes(lowerQuery);
+                    case 'complex': return complex.includes(normalizedQuery);
+                    case 'developer': return developer.includes(normalizedQuery);
+                    case 'manager': return manager.includes(normalizedQuery);
+                    default: return complex.includes(normalizedQuery) || developer.includes(normalizedQuery) || manager.includes(normalizedQuery);
                 }
             });
+            
+            // Если точных совпадений нет — ищем похожие
+            let fuzzyMatches = [];
+            let suggestions = [];
+            
+            if (exactMatches.length === 0) {
+                // Собираем уникальные названия
+                const allComplexes = [...new Set(data.map(d => d['Название ЖК']).filter(Boolean))];
+                const allDevelopers = [...new Set(data.map(d => d['Застройщик']).filter(Boolean))];
+                const allManagers = [...new Set(data.map(d => d['Менеджер']).filter(Boolean))];
+                const allValues = [...new Set([...allComplexes, ...allDevelopers, ...allManagers])];
+                
+                // Ищем похожие
+                for (let value of allValues) {
+                    const normalizedValue = normalizeForSearch(value);
+                    if (isSimilar(normalizedValue, normalizedQuery)) {
+                        suggestions.push(value);
+                        if (suggestions.length >= 3) break;
+                    }
+                }
+                
+                // Если нашли похожие — ищем по ним
+                if (suggestions.length > 0) {
+                    fuzzyMatches = data.filter(item => {
+                        const complex = normalizeForSearch(item['Название ЖК'] || '');
+                        const developer = normalizeForSearch(item['Застройщик'] || '');
+                        const manager = normalizeForSearch(item['Менеджер'] || '');
+                        const suggestionQuery = normalizeForSearch(suggestions[0]);
+                        
+                        switch(searchType) {
+                            case 'complex': return complex === suggestionQuery;
+                            case 'developer': return developer === suggestionQuery;
+                            case 'manager': return manager === suggestionQuery;
+                            default: return complex === suggestionQuery || developer === suggestionQuery || manager === suggestionQuery;
+                        }
+                    }).slice(0, 20);
+                }
+            }
+            
+            const results = exactMatches.length > 0 ? exactMatches : fuzzyMatches;
             
             // Статистика
             statsDiv.style.display = 'flex';
             statsDiv.innerHTML = `
                 <span>📊 Всего записей: ${data.length}</span>
-                <span>🔍 Найдено: ${filtered.length}</span>
+                <span>🔍 Найдено: ${results.length}</span>
                 <span>📅 Обновлено: ${lastUpdateDate.toLocaleDateString()}</span>
             `;
             
-            if (filtered.length === 0) {
-                // Ищем похожие названия для подсказки
-                const suggestions = [];
-                const allNames = [...new Set(data.map(d => d['Название ЖК']).filter(Boolean))];
-                for (let name of allNames) {
-                    const nameLower = name.toLowerCase();
-                    if (levenshteinDistance(nameLower, lowerQuery) <= 3 && !suggestions.includes(name)) {
-                        suggestions.push(name);
-                        if (suggestions.length >= 3) break;
-                    }
-                }
-                
+            if (results.length === 0) {
                 let suggestionHtml = '';
                 if (suggestions.length > 0) {
                     suggestionHtml = `<div class="suggestion">💡 Возможно, вы искали: ${suggestions.slice(0, 3).map(s => `<strong>${s}</strong>`).join(', ')}</div>`;
@@ -260,14 +346,18 @@
                     <div class="not-found">
                         🤷‍♂️ Ничего не найдено по запросу "${query}"
                         ${suggestionHtml}
-                        <br><br>Совет: проверьте регистр или попробуйте сократить запрос
+                        <br><br>Совет: проверьте написание или попробуйте сократить запрос
                     </div>
                 `;
                 return;
             }
             
             let html = '';
-            filtered.slice(0, 50).forEach(item => {
+            if (exactMatches.length === 0 && fuzzyMatches.length > 0) {
+                html += `<div class="suggestion">💡 Найдено по похожему названию: "${suggestions[0]}"</div>`;
+            }
+            
+            results.slice(0, 50).forEach(item => {
                 const phone = item['Телефон'] || '';
                 html += `<div class="result-card">`;
                 
@@ -293,7 +383,7 @@
             
             resultsDiv.innerHTML = html;
             
-            // Добавляем обработчики копирования
+            // Обработчики копирования
             document.querySelectorAll('.copy-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
