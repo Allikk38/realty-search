@@ -521,5 +521,38 @@
     </a>
 
     <script src="../pages/main.js"></script>
+    <script>
+    // Обработка параметра категории из URL
+    (function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const category = urlParams.get('category');
+        
+        if (category === 'newbuild') {
+            // Активируем вкладку Новостройки
+            setTimeout(() => {
+                const newbuildTab = document.querySelector('.tab[data-category="newbuild"]');
+                if (newbuildTab) {
+                    newbuildTab.click();
+                }
+                // Меняем заголовок для контекста
+                const headerTitle = document.querySelector('.header h1');
+                if (headerTitle) {
+                    headerTitle.innerHTML = '<i class="fas fa-city"></i> Новостройки Новосибирска';
+                }
+            }, 100);
+        } else if (category === 'suburban') {
+            setTimeout(() => {
+                const suburbanTab = document.querySelector('.tab[data-category="suburban"]');
+                if (suburbanTab) {
+                    suburbanTab.click();
+                }
+                const headerTitle = document.querySelector('.header h1');
+                if (headerTitle) {
+                    headerTitle.innerHTML = '<i class="fas fa-tree"></i> Загородная недвижимость';
+                }
+            }, 100);
+        }
+    })();
+</script>
 </body>
 </html>
