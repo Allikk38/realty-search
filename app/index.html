@@ -6,35 +6,62 @@
     <title>Каталог контактов застройщиков | Новостройки и загородная недвижимость</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-                /* ========== ТЕМНАЯ ТЕМА (по умолчанию) ========== */
+        /* ========== ПЕРЕМЕННЫЕ ТЕМ ========== */
         :root {
             --bg-gradient-start: #1e293b;
             --bg-gradient-end: #0f172a;
+            --bg-gradient-third: #020617;
             --card-bg: rgba(255, 255, 255, 0.06);
+            --card-bg-hover: rgba(255, 255, 255, 0.08);
             --card-border: rgba(255, 255, 255, 0.1);
+            --card-border-hover: rgba(167, 139, 250, 0.3);
             --text-primary: #f1f5f9;
             --text-secondary: #94a3b8;
+            --text-muted: #64748b;
             --header-bg: rgba(255, 255, 255, 0.08);
+            --input-bg: rgba(255, 255, 255, 0.1);
+            --input-border: rgba(255, 255, 255, 0.2);
+            --control-bg: rgba(255, 255, 255, 0.05);
+            --alphabet-bg: rgba(255, 255, 255, 0.08);
+            --alphabet-border: rgba(255, 255, 255, 0.15);
+            --alphabet-color: #cbd5e1;
+            --complex-bg: rgba(255, 255, 255, 0.03);
+            --complex-bg-hover: rgba(255, 255, 255, 0.06);
+            --manager-bg: rgba(255, 255, 255, 0.03);
+            --copy-btn-bg: rgba(255, 255, 255, 0.1);
+            --copy-btn-hover: #a78bfa;
+            --toast-bg: rgba(0, 0, 0, 0.9);
+            --empty-state-color: #64748b;
         }
 
         /* ========== СВЕТЛАЯ ТЕМА ========== */
         body.light-theme {
             --bg-gradient-start: #f8fafc;
             --bg-gradient-end: #e2e8f0;
+            --bg-gradient-third: #cbd5e1;
             --card-bg: rgba(255, 255, 255, 0.9);
+            --card-bg-hover: rgba(255, 255, 255, 1);
             --card-border: rgba(0, 0, 0, 0.1);
+            --card-border-hover: rgba(139, 92, 246, 0.4);
             --text-primary: #1e293b;
             --text-secondary: #475569;
+            --text-muted: #64748b;
             --header-bg: rgba(0, 0, 0, 0.05);
+            --input-bg: rgba(0, 0, 0, 0.05);
+            --input-border: rgba(0, 0, 0, 0.15);
+            --control-bg: rgba(0, 0, 0, 0.05);
+            --alphabet-bg: rgba(0, 0, 0, 0.05);
+            --alphabet-border: rgba(0, 0, 0, 0.1);
+            --alphabet-color: #475569;
+            --complex-bg: rgba(0, 0, 0, 0.03);
+            --complex-bg-hover: rgba(0, 0, 0, 0.05);
+            --manager-bg: rgba(0, 0, 0, 0.03);
+            --copy-btn-bg: rgba(0, 0, 0, 0.08);
+            --copy-btn-hover: #7c3aed;
+            --toast-bg: rgba(0, 0, 0, 0.85);
+            --empty-state-color: #94a3b8;
         }
 
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
-            min-height: 100vh;
-            padding: 20px;
-            transition: background 0.3s ease;
-        }
         * {
             margin: 0;
             padding: 0;
@@ -43,9 +70,10 @@
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #020617 100%);
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 50%, var(--bg-gradient-third) 100%);
             min-height: 100vh;
             padding: 20px;
+            transition: background 0.3s ease, color 0.2s ease;
         }
 
         .container {
@@ -55,12 +83,12 @@
 
         /* Header */
         .header {
-            background: rgba(255, 255, 255, 0.08);
+            background: var(--header-bg);
             backdrop-filter: blur(20px);
             border-radius: 32px;
             padding: 30px;
             margin-bottom: 30px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            border: 1px solid var(--card-border);
         }
 
         h1 {
@@ -73,7 +101,7 @@
         }
 
         .sub {
-            color: #94a3b8;
+            color: var(--text-secondary);
             margin-bottom: 20px;
         }
 
@@ -88,23 +116,23 @@
         .search-wrapper input {
             flex: 2;
             padding: 16px 20px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            border: 1px solid var(--input-border);
             border-radius: 48px;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
+            background: var(--input-bg);
+            color: var(--text-primary);
             font-size: 1rem;
         }
 
         .search-wrapper input::placeholder {
-            color: #94a3b8;
+            color: var(--text-secondary);
         }
 
         .search-wrapper select {
             padding: 16px 24px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            border: 1px solid var(--input-border);
             border-radius: 48px;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
+            background: var(--input-bg);
+            color: var(--text-primary);
             cursor: pointer;
         }
 
@@ -133,15 +161,15 @@
 
         .btn-outline {
             background: transparent;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: #e2e8f0;
+            border: 1px solid var(--card-border);
+            color: var(--text-primary);
         }
 
         .btn-outline:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: var(--card-bg-hover);
         }
 
-        /* Панель управления (НОВОЕ) */
+        /* Панель управления */
         .control-panel {
             display: flex;
             justify-content: space-between;
@@ -150,7 +178,7 @@
             gap: 20px;
             margin-bottom: 24px;
             padding: 16px 20px;
-            background: rgba(255, 255, 255, 0.05);
+            background: var(--control-bg);
             border-radius: 20px;
         }
 
@@ -159,7 +187,7 @@
             gap: 10px;
         }
 
-        /* Алфавитный указатель (НОВЫЙ) */
+        /* Алфавитный указатель */
         .alphabet-nav {
             display: flex;
             flex-wrap: wrap;
@@ -172,9 +200,9 @@
             width: 40px;
             height: 40px;
             border-radius: 12px;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: #cbd5e1;
+            background: var(--alphabet-bg);
+            border: 1px solid var(--alphabet-border);
+            color: var(--alphabet-color);
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s ease;
@@ -183,22 +211,22 @@
             justify-content: center;
         }
 
-        .alphabet-btn:hover {
+        .alphabet-btn:hover:not(:disabled) {
             background: linear-gradient(135deg, #a78bfa, #3b82f6);
             color: white;
             transform: translateY(-2px);
         }
 
-        /* Счётчик результатов (НОВЫЙ) */
+        /* Счётчик результатов */
         .results-counter {
-            color: #94a3b8;
+            color: var(--text-secondary);
             font-size: 0.85rem;
             padding: 8px 16px;
-            background: rgba(255, 255, 255, 0.05);
+            background: var(--control-bg);
             border-radius: 40px;
         }
 
-        /* Пагинация (НОВАЯ) */
+        /* Пагинация */
         .pagination {
             display: flex;
             justify-content: center;
@@ -210,10 +238,10 @@
 
         .pagination-btn {
             padding: 10px 18px;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: var(--alphabet-bg);
+            border: 1px solid var(--alphabet-border);
             border-radius: 12px;
-            color: #e2e8f0;
+            color: var(--text-primary);
             cursor: pointer;
             transition: all 0.2s ease;
             font-weight: 500;
@@ -222,6 +250,7 @@
         .pagination-btn:hover:not(:disabled) {
             background: linear-gradient(135deg, #a78bfa, #3b82f6);
             transform: translateY(-2px);
+            color: white;
         }
 
         .pagination-btn:disabled {
@@ -232,6 +261,7 @@
         .pagination-btn.active {
             background: linear-gradient(135deg, #a78bfa, #3b82f6);
             border-color: transparent;
+            color: white;
         }
 
         .page-numbers {
@@ -240,7 +270,7 @@
             flex-wrap: wrap;
         }
 
-        /* Кнопка "Наверх" (НОВАЯ) */
+        /* Кнопка "Наверх" */
         .scroll-top-btn {
             position: fixed;
             bottom: 100px;
@@ -269,12 +299,37 @@
             display: flex;
         }
 
+        /* Кнопка переключения темы */
+        .theme-toggle-btn {
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #a78bfa, #3b82f6);
+            border: none;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .theme-toggle-btn:hover {
+            transform: scale(1.1);
+        }
+
         /* Вкладки */
         .tabs {
             display: flex;
             gap: 10px;
             margin-bottom: 30px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid var(--card-border);
             padding-bottom: 10px;
         }
 
@@ -282,7 +337,7 @@
             padding: 12px 28px;
             background: transparent;
             border: none;
-            color: #94a3b8;
+            color: var(--text-secondary);
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
@@ -296,8 +351,8 @@
         }
 
         .tab:hover:not(.active) {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
+            background: var(--card-bg);
+            color: var(--text-primary);
         }
 
         /* Каталог */
@@ -309,16 +364,16 @@
 
         /* Карточка застройщика */
         .developer-card {
-            background: rgba(255, 255, 255, 0.06);
+            background: var(--card-bg);
             border-radius: 24px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--card-border);
             overflow: hidden;
             transition: all 0.3s ease;
         }
 
         .developer-card:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(167, 139, 250, 0.3);
+            background: var(--card-bg-hover);
+            border-color: var(--card-border-hover);
         }
 
         .developer-header {
@@ -356,7 +411,7 @@
         .developer-name {
             font-size: 1.3rem;
             font-weight: 600;
-            color: white;
+            color: var(--text-primary);
         }
 
         .developer-stats {
@@ -364,7 +419,7 @@
             gap: 15px;
             margin-top: 5px;
             font-size: 0.8rem;
-            color: #94a3b8;
+            color: var(--text-secondary);
         }
 
         .developer-stats span {
@@ -390,11 +445,11 @@
         /* Список ЖК */
         .complexes-list {
             padding: 0 24px 24px 24px;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            border-top: 1px solid var(--card-border);
         }
 
         .complex-item {
-            background: rgba(255, 255, 255, 0.03);
+            background: var(--complex-bg);
             border-radius: 16px;
             margin-top: 16px;
             padding: 16px;
@@ -402,7 +457,7 @@
         }
 
         .complex-item:hover {
-            background: rgba(255, 255, 255, 0.06);
+            background: var(--complex-bg-hover);
         }
 
         .complex-header {
@@ -418,7 +473,7 @@
         .complex-name {
             font-size: 1.1rem;
             font-weight: 600;
-            color: #e2e8f0;
+            color: var(--text-primary);
             display: flex;
             align-items: center;
             gap: 10px;
@@ -455,7 +510,7 @@
         }
 
         .complex-address {
-            color: #94a3b8;
+            color: var(--text-secondary);
             font-size: 0.85rem;
             margin-bottom: 12px;
             display: flex;
@@ -484,7 +539,7 @@
             flex-wrap: wrap;
             gap: 10px;
             padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.03);
+            background: var(--manager-bg);
             border-radius: 12px;
         }
 
@@ -496,7 +551,7 @@
         }
 
         .manager-name {
-            color: #f1f5f9;
+            color: var(--text-primary);
             font-weight: 500;
         }
 
@@ -518,18 +573,18 @@
         }
 
         .copy-btn {
-            background: rgba(255, 255, 255, 0.1);
+            background: var(--copy-btn-bg);
             border: none;
             padding: 4px 12px;
             border-radius: 20px;
             cursor: pointer;
-            color: #94a3b8;
+            color: var(--text-secondary);
             font-size: 0.7rem;
             transition: all 0.2s ease;
         }
 
         .copy-btn:hover {
-            background: #a78bfa;
+            background: var(--copy-btn-hover);
             color: white;
         }
 
@@ -537,7 +592,7 @@
         .empty-state {
             text-align: center;
             padding: 60px 20px;
-            color: #64748b;
+            color: var(--empty-state-color);
         }
 
         .empty-state i {
@@ -577,7 +632,7 @@
             position: fixed;
             bottom: 100px;
             right: 30px;
-            background: rgba(0, 0, 0, 0.9);
+            background: var(--toast-bg);
             color: white;
             padding: 12px 24px;
             border-radius: 48px;
@@ -623,6 +678,12 @@
                 height: 50px;
                 font-size: 1.2rem;
             }
+            .theme-toggle-btn {
+                bottom: 20px;
+                left: 20px;
+                width: 45px;
+                height: 45px;
+            }
             .scroll-top-btn {
                 bottom: 90px;
                 right: 20px;
@@ -656,10 +717,10 @@
             </div>
         </div>
 
-        <!-- НОВОЕ: Алфавитный указатель -->
+        <!-- Алфавитный указатель -->
         <div class="alphabet-nav" id="alphabetNav"></div>
 
-        <!-- НОВОЕ: Панель управления -->
+        <!-- Панель управления -->
         <div class="control-panel">
             <div class="expand-buttons">
                 <button class="btn btn-outline" id="expandAllBtn">
@@ -695,13 +756,18 @@
             </div>
         </div>
 
-        <!-- НОВОЕ: Пагинация -->
+        <!-- Пагинация -->
         <div class="pagination" id="pagination"></div>
     </div>
 
-    <!-- НОВОЕ: Кнопка "Наверх" -->
+    <!-- Кнопка "Наверх" -->
     <button class="scroll-top-btn" id="scrollTopBtn">
         <i class="fas fa-arrow-up"></i>
+    </button>
+
+    <!-- Кнопка переключения темы -->
+    <button class="theme-toggle-btn" id="themeToggle" title="Сменить тему">
+        <i class="fas fa-moon"></i>
     </button>
 
     <!-- Кнопка админ-панели -->
