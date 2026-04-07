@@ -1,6 +1,6 @@
 /**
  * Модуль каталога застройщиков
- * Версия: 5.0
+ * Версия: 5.1
  * 
  * НОВЫЕ ФУНКЦИИ:
  * 1. Пагинация (по 20 застройщиков на страницу)
@@ -8,6 +8,7 @@
  * 3. Алфавитный указатель (А-Я)
  * 4. Сохранение состояния в localStorage
  * 5. Кнопка "Наверх"
+ * 6. Светлая/тёмная тема с сохранением
  * 
  * Особенности:
  * - Автоматическая загрузка данных из data.csv с GitHub
@@ -16,6 +17,56 @@
  * - Поиск по застройщикам, ЖК и менеджерам
  * - ВСЕ ГРУППЫ СВЁРНУТЫ ПО УМОЛЧАНИЮ
  */
+
+// ========== УПРАВЛЕНИЕ ТЕМОЙ ==========
+
+const THEME_STORAGE_KEY = 'catalogTheme';
+
+function getSavedTheme() {
+    try {
+        const saved = localStorage.getItem(THEME_STORAGE_KEY);
+        if (saved === 'light' || saved === 'dark') return saved;
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+        return 'dark';
+    } catch (e) {
+        return 'dark';
+    }
+}
+
+function applyTheme(theme) {
+    const body = document.body;
+    const themeToggleIcon = document.querySelector('#themeToggle i');
+    
+    if (theme === 'light') {
+        body.classList.add('light-theme');
+        if (themeToggleIcon) themeToggleIcon.className = 'fas fa-sun';
+    } else {
+        body.classList.remove('light-theme');
+        if (themeToggleIcon) themeToggleIcon.className = 'fas fa-moon';
+    }
+}
+
+function saveTheme(theme) {
+    try {
+        localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch (e) {
+        console.warn('Не удалось сохранить тему:', e);
+    }
+}
+
+function initTheme() {
+    const savedTheme = getSavedTheme();
+    applyTheme(savedTheme);
+    console.log(`🎨 Тема инициализирована: ${savedTheme === 'light' ? 'Светлая' : 'Тёмная'}`);
+}
+
+function toggleTheme() {
+    const isLight = document.body.classList.contains('light-theme');
+    const newTheme = isLight ? 'dark' : 'light';
+    applyTheme(newTheme);
+    saveTheme(newTheme);
+    console.log(`🎨 Тема переключена: ${newTheme === 'light' ? 'Светлая' : 'Тёмная'}`);
+}
 
 // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 
@@ -379,7 +430,7 @@ export function renderComplexCard(complex) {
                         `).join('')}
                     </div>
                 ` : `
-                    <div style="color: #64748b; font-size: 0.85rem; padding: 10px 0;">
+                    <div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px 0;">
                         <i class="fas fa-info-circle"></i> Нет добавленных контактов
                     </div>
                 `}
@@ -559,7 +610,7 @@ class Catalog {
         container.innerHTML = alphabet.map(letter => {
             const hasDeveloper = developers.some(dev => 
                 dev.name.charAt(0).toUpperCase() === letter || 
-                (letter === 'А' && 'AEIOU'.includes(dev.name.charAt(0))) // Для латиницы
+                (letter === 'А' && 'AEIOU'.includes(dev.name.charAt(0)))
             );
             return `<button class="alphabet-btn" data-letter="${letter}" ${!hasDeveloper ? 'disabled style="opacity:0.3"' : ''}>${letter}</button>`;
         }).join('');
@@ -801,6 +852,12 @@ class Catalog {
         
         if (expandAllBtn) expandAllBtn.addEventListener('click', () => this.expandAll());
         if (collapseAllBtn) collapseAllBtn.addEventListener('click', () => this.collapseAll());
+        
+        // НОВОЕ: переключение темы
+        const themeToggle = document.getElementById('themeToggle');
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => toggleTheme());
+        }
     }
 
     handleUrlCategory() {
@@ -827,6 +884,9 @@ class Catalog {
     async init() {
         if (this.isInitialized) return;
         
+        // Инициализация темы
+        initTheme();
+        
         const catalog = document.getElementById('catalog');
         if (catalog) {
             catalog.innerHTML = `<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Загрузка данных...</p></div>`;
@@ -840,7 +900,7 @@ class Catalog {
         this.render();
         
         this.isInitialized = true;
-        console.log('✅ Каталог инициализирован с новыми функциями');
+        console.log('✅ Каталог инициализирован с новыми функциями и темой');
     }
 }
 
