@@ -1,5 +1,11 @@
+/**
+ * Модуль каталога застройщиков
+ * Версия: 2.0
+ * Описание: Отображение каталога ЖК с группировкой по застройщикам и категориям
+ */
+
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
-let database = {
+let catalogDatabase = {
     developers: {},
     contacts: []
 };
@@ -9,46 +15,38 @@ let searchQuery = '';
 
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
 document.addEventListener('DOMContentLoaded', () => {
-    loadData();
-    setupEventListeners();
+    loadCatalogData();
+    setupCatalogEventListeners();
+    
+    // Обработка параметра категории из URL
+    handleUrlCategory();
 });
 
 // ========== ЗАГРУЗКА ДАННЫХ ==========
-function loadData() {
+function loadCatalogData() {
     const saved = localStorage.getItem('contactsDatabase');
     if (saved) {
         try {
-            database = JSON.parse(saved);
-            // Добавляем категории для существующих застройщиков, если их нет
-            ensureCategories();
+            const fullData = JSON.parse(saved);
+            catalogDatabase = {
+                developers: fullData.developers || {},
+                contacts: fullData.contacts || []
+            };
         } catch(e) {
             console.error('Ошибка загрузки', e);
-            initDemoData();
+            initCatalogDemoData();
         }
     } else {
-        initDemoData();
+        initCatalogDemoData();
     }
     renderCatalog();
 }
 
-// Добавляем категории для застройщиков
-function ensureCategories() {
-    for (let devName in database.developers) {
-        if (!database.developers[devName].category) {
-            // Автоопределение категории
-            const isSuburban = devName.toLowerCase().includes('кп') || 
-                              devName.toLowerCase().includes('поселок') ||
-                              devName.toLowerCase().includes('деревня') ||
-                              devName.toLowerCase().includes('загород');
-            database.developers[devName].category = isSuburban ? 'suburban' : 'newbuild';
-        }
-    }
-    saveData();
-}
-
-// Демо-данные
-function initDemoData() {
-    database = {
+/**
+ * Инициализация демонстрационных данных для каталога
+ */
+function initCatalogDemoData() {
+    catalogDatabase = {
         developers: {
             "Расцветай": {
                 id: "dev_1",
@@ -81,51 +79,56 @@ function initDemoData() {
                 commonPhone: "+7 (383) 363-24-80",
                 opAddress: "Красный проспект, 39",
                 category: "newbuild"
-            },
-            "КП «Сосновый Бор»": {
-                id: "dev_5",
-                complexes: ["Сосновый Бор 1", "Сосновый Бор 2"],
-                address: "Новосибирский район, пос. Кудряшовский",
-                commonPhone: "+7 (383) 123-45-67",
-                opAddress: "",
-                category: "suburban"
-            },
-            "Загородный Клуб «Береговой»": {
-                id: "dev_6",
-                complexes: ["Береговой квартал", "Резиденция Берег"],
-                address: "Искитимский район, с. Береговое",
-                commonPhone: "+7 (383) 987-65-43",
-                opAddress: "",
-                category: "suburban"
             }
         },
         contacts: [
-            // Новостройки
             { developer: "Расцветай", complex: "Эко-квартал на Кедровой", name: "Данил Швец", phone: "+7 961 873-63-10", role: "менеджер" },
             { developer: "Расцветай", complex: "Эко-квартал на Кедровой", name: "Александра Гаммель", phone: "+7 961 848-39-56", role: "менеджер" },
             { developer: "Расцветай", complex: "Расцветай на Красном", name: "Денис Бородин", phone: "+7 960 792-82-68", role: "менеджер" },
             { developer: "VIRA (Вира)", complex: "CITATUM (Цитатум)", name: "Екатерина Рольгайзер", phone: "+7 913 723-00-37", role: "специалист по работе с партнерами" },
             { developer: "Брусника. Сибакадемстрой", complex: "Авиатор", name: "Максим Попов", phone: "+7 999 463 3627", role: "менеджер" },
             { developer: "Брусника. Сибакадемстрой", complex: "Авиатор", name: "Виктор Павлов", phone: "+7 913 627 5181", role: "менеджер" },
-            { developer: "КПД-Газстрой", complex: "Чистая Слобода", name: "Светлана Дудина", phone: "+7 913 981-00-71", role: "менеджер" },
-            { developer: "КПД-Газстрой", complex: "Чистая Слобода", name: "Белая Татьяна", phone: "+7 965 822-00-73", role: "менеджер" },
-            // Загородка
-            { developer: "КП «Сосновый Бор»", complex: "Сосновый Бор 1", name: "Ирина Соснова", phone: "+7 913 123-45-67", role: "менеджер" },
-            { developer: "КП «Сосновый Бор»", complex: "Сосновый Бор 2", name: "Алексей Боровой", phone: "+7 913 234-56-78", role: "руководитель ОП" },
-            { developer: "Загородный Клуб «Береговой»", complex: "Береговой квартал", name: "Мария Прибрежная", phone: "+7 913 345-67-89", role: "менеджер" }
+            { developer: "КПД-Газстрой", complex: "Чистая Слобода", name: "Светлана Дудина", phone: "+7 913 981-00-71", role: "менеджер" }
         ]
     };
-    saveData();
 }
 
-function saveData() {
-    localStorage.setItem('contactsDatabase', JSON.stringify(database));
+// ========== ОБРАБОТКА ПАРАМЕТРОВ URL ==========
+function handleUrlCategory() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const category = urlParams.get('category');
+    
+    if (category === 'newbuild') {
+        currentCategory = 'newbuild';
+        // Активируем вкладку Новостройки
+        const newbuildTab = document.querySelector('.tab[data-category="newbuild"]');
+        if (newbuildTab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            newbuildTab.classList.add('active');
+        }
+        // Меняем заголовок
+        const headerTitle = document.querySelector('.header h1');
+        if (headerTitle) {
+            headerTitle.innerHTML = '<i class="fas fa-city"></i> Новостройки Новосибирска';
+        }
+    } else if (category === 'suburban') {
+        currentCategory = 'suburban';
+        const suburbanTab = document.querySelector('.tab[data-category="suburban"]');
+        if (suburbanTab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            suburbanTab.classList.add('active');
+        }
+        const headerTitle = document.querySelector('.header h1');
+        if (headerTitle) {
+            headerTitle.innerHTML = '<i class="fas fa-tree"></i> Загородная недвижимость';
+        }
+    }
 }
 
 // ========== ФОРМАТИРОВАНИЕ ТЕЛЕФОНА ==========
 function formatPhoneForDisplay(phone) {
     if (!phone) return '';
-    let cleaned = phone.replace(/[^\d+]/g, '');
+    let cleaned = String(phone).replace(/[^\d+]/g, '');
     if (cleaned.startsWith('8') && cleaned.length === 11) {
         cleaned = '+7' + cleaned.slice(1);
     }
@@ -135,32 +138,13 @@ function formatPhoneForDisplay(phone) {
     return phone;
 }
 
-// ========== ОТОБРАЖЕНИЕ КАТАЛОГА ==========
-function renderCatalog() {
-    const catalog = document.getElementById('catalog');
-    const filteredDevs = getFilteredDevelopers();
-    
-    if (filteredDevs.length === 0) {
-        catalog.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-search"></i>
-                <p>Ничего не найдено по вашему запросу</p>
-                <button class="btn btn-outline" onclick="clearSearch()" style="margin-top: 20px;">
-                    <i class="fas fa-undo"></i> Очистить поиск
-                </button>
-            </div>
-        `;
-        return;
-    }
-    
-    catalog.innerHTML = filteredDevs.map(dev => renderDeveloperCard(dev)).join('');
-    
-    // Добавляем обработчики после рендера
-    attachEventHandlers();
-}
-
+// ========== ПОЛУЧЕНИЕ ОТФИЛЬТРОВАННЫХ ЗАСТРОЙЩИКОВ ==========
 function getFilteredDevelopers() {
-    let developers = Object.values(database.developers);
+    // Преобразуем объект в массив для удобной фильтрации
+    let developers = Object.entries(catalogDatabase.developers).map(([name, data]) => ({
+        name: name,
+        ...data
+    }));
     
     // Фильтр по категории
     if (currentCategory !== 'all') {
@@ -172,18 +156,17 @@ function getFilteredDevelopers() {
         const query = searchQuery.toLowerCase();
         developers = developers.filter(dev => {
             // Поиск по названию застройщика
-            if (dev.name?.toLowerCase().includes(query)) return true;
-            if (dev.toLowerCase().includes(query)) return true;
+            if (dev.name.toLowerCase().includes(query)) return true;
             
             // Поиск по ЖК
             const hasMatchingComplex = dev.complexes.some(complex => 
-                complex.toLowerCase().includes(query)
+                String(complex).toLowerCase().includes(query)
             );
             if (hasMatchingComplex) return true;
             
             // Поиск по контактам
-            const hasMatchingContact = database.contacts.some(contact => 
-                contact.developer === (dev.name || dev) && 
+            const hasMatchingContact = catalogDatabase.contacts.some(contact => 
+                contact.developer === dev.name && 
                 (contact.name.toLowerCase().includes(query) || 
                  contact.phone.includes(query))
             );
@@ -194,42 +177,68 @@ function getFilteredDevelopers() {
     }
     
     // Сортировка по алфавиту
-    return developers.sort((a, b) => {
-        const nameA = (a.name || a).toLowerCase();
-        const nameB = (b.name || b).toLowerCase();
-        return nameA.localeCompare(nameB);
-    });
+    developers.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    
+    return developers;
 }
 
+// ========== ОТОБРАЖЕНИЕ КАТАЛОГА ==========
+function renderCatalog() {
+    const catalog = document.getElementById('catalog');
+    if (!catalog) return;
+    
+    const filteredDevs = getFilteredDevelopers();
+    
+    if (filteredDevs.length === 0) {
+        catalog.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-search"></i>
+                <p>Ничего не найдено по вашему запросу</p>
+                <button class="btn btn-outline" onclick="window.clearSearch()" style="margin-top: 20px;">
+                    <i class="fas fa-undo"></i> Очистить поиск
+                </button>
+            </div>
+        `;
+        return;
+    }
+    
+    catalog.innerHTML = filteredDevs.map(dev => renderDeveloperCard(dev)).join('');
+    
+    // Добавляем обработчики после рендера
+    attachCatalogEventHandlers();
+}
+
+/**
+ * Рендер карточки застройщика
+ * @param {Object} developer - Объект застройщика
+ * @returns {string} HTML строка
+ */
 function renderDeveloperCard(developer) {
-    const devName = developer.name || developer;
-    const devData = developer.name ? developer : database.developers[developer];
-    const complexes = devData?.complexes || [];
-    const category = devData?.category === 'suburban' ? 'suburban' : 'newbuild';
+    const category = developer.category === 'suburban' ? 'suburban' : 'newbuild';
     const categoryIcon = category === 'suburban' ? 'fa-tree' : 'fa-city';
     const categoryText = category === 'suburban' ? 'Загородная' : 'Новостройка';
     
     // Получаем уникальные ЖК с их контактами
-    const complexesWithContacts = complexes.map(complex => ({
+    const complexesWithContacts = developer.complexes.map(complex => ({
         name: complex,
-        commonPhone: devData?.commonPhone || '',
-        address: devData?.address || devData?.opAddress || '',
-        managers: database.contacts.filter(c => c.developer === devName && c.complex === complex)
+        commonPhone: developer.commonPhone || '',
+        address: developer.address || developer.opAddress || '',
+        managers: catalogDatabase.contacts.filter(c => c.developer === developer.name && c.complex === complex)
     }));
     
     const totalContacts = complexesWithContacts.reduce((sum, c) => sum + c.managers.length, 0);
     
     return `
-        <div class="developer-card" data-developer="${escapeHtml(devName)}" data-category="${category}">
-            <div class="developer-header" onclick="toggleDeveloper(this)">
+        <div class="developer-card" data-developer="${escapeHtml(developer.name)}" data-category="${category}">
+            <div class="developer-header" onclick="window.toggleDeveloper(this)">
                 <div class="developer-info">
                     <div class="developer-icon">
                         <i class="fas ${categoryIcon}"></i>
                     </div>
                     <div>
-                        <div class="developer-name">${escapeHtml(devName)}</div>
+                        <div class="developer-name">${escapeHtml(developer.name)}</div>
                         <div class="developer-stats">
-                            <span><i class="fas fa-home"></i> ${complexes.length} ЖК</span>
+                            <span><i class="fas fa-home"></i> ${developer.complexes.length} ЖК</span>
                             <span><i class="fas fa-phone"></i> ${totalContacts} контактов</span>
                             <span><i class="fas fa-tag"></i> ${categoryText}</span>
                         </div>
@@ -238,19 +247,25 @@ function renderDeveloperCard(developer) {
                 <i class="fas fa-chevron-down toggle-icon"></i>
             </div>
             <div class="complexes-list">
-                ${complexesWithContacts.map(complex => renderComplexCard(complex, devName)).join('')}
+                ${complexesWithContacts.map(complex => renderComplexCard(complex, developer.name)).join('')}
             </div>
         </div>
     `;
 }
 
+/**
+ * Рендер карточки ЖК
+ * @param {Object} complex - Объект ЖК
+ * @param {string} developerName - Название застройщика
+ * @returns {string} HTML строка
+ */
 function renderComplexCard(complex, developerName) {
     const hasManagers = complex.managers.length > 0;
     const hasCommonPhone = complex.commonPhone;
     
     return `
         <div class="complex-item" data-complex="${escapeHtml(complex.name)}">
-            <div class="complex-header" onclick="toggleComplex(this)">
+            <div class="complex-header" onclick="window.toggleComplex(this)">
                 <div class="complex-name">
                     <i class="fas fa-building"></i>
                     ${escapeHtml(complex.name)}
@@ -259,7 +274,7 @@ function renderComplexCard(complex, developerName) {
                     <div class="complex-phone">
                         <i class="fas fa-phone-alt"></i>
                         ${formatPhoneForDisplay(complex.commonPhone)}
-                        <button class="copy-btn" onclick="event.stopPropagation(); copyToClipboard('${complex.commonPhone}')">
+                        <button class="copy-btn" onclick="event.stopPropagation(); window.copyToClipboard('${complex.commonPhone.replace(/'/g, "\\'")}')">
                             <i class="fas fa-copy"></i>
                         </button>
                     </div>
@@ -288,7 +303,7 @@ function renderComplexCard(complex, developerName) {
                                     <a href="tel:${manager.phone.replace(/[^\d+]/g, '')}" class="manager-phone">
                                         <i class="fas fa-phone-alt"></i> ${formatPhoneForDisplay(manager.phone)}
                                     </a>
-                                    <button class="copy-btn" onclick="copyToClipboard('${manager.phone}')">
+                                    <button class="copy-btn" onclick="window.copyToClipboard('${manager.phone.replace(/'/g, "\\'")}')">
                                         <i class="fas fa-copy"></i>
                                     </button>
                                 </div>
@@ -305,26 +320,26 @@ function renderComplexCard(complex, developerName) {
     `;
 }
 
-// ========== ОБРАБОТЧИКИ ==========
+// ========== ОБРАБОТЧИКИ СОБЫТИЙ ==========
 function toggleDeveloper(element) {
     const card = element.closest('.developer-card');
-    card.classList.toggle('collapsed');
+    if (card) card.classList.toggle('collapsed');
 }
 
 function toggleComplex(element) {
     const item = element.closest('.complex-item');
-    item.classList.toggle('collapsed');
+    if (item) item.classList.toggle('collapsed');
 }
 
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => {
-        showToast(`✅ Скопировано: ${text}`);
+        showCatalogToast(`✅ Скопировано: ${text}`);
     }).catch(() => {
-        showToast('❌ Не удалось скопировать', true);
+        showCatalogToast('❌ Не удалось скопировать', true);
     });
 }
 
-function showToast(message, isError = false) {
+function showCatalogToast(message, isError = false) {
     const existing = document.querySelector('.toast');
     if (existing) existing.remove();
     
@@ -337,20 +352,19 @@ function showToast(message, isError = false) {
 }
 
 function clearSearch() {
-    document.getElementById('searchInput').value = '';
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) searchInput.value = '';
     searchQuery = '';
     renderCatalog();
 }
 
-function attachEventHandlers() {
-    // Сохраняем состояние свернутости всех карточек
+function attachCatalogEventHandlers() {
+    // По умолчанию все карточки застройщиков развернуты, ЖК свернуты
     document.querySelectorAll('.developer-card').forEach(card => {
-        // По умолчанию все развернуты
         card.classList.remove('collapsed');
     });
     
     document.querySelectorAll('.complex-item').forEach(item => {
-        // По умолчанию все свернуты (чтобы не загромождать)
         item.classList.add('collapsed');
     });
 }
@@ -362,17 +376,16 @@ function escapeHtml(str) {
         if (m === '<') return '&lt;';
         if (m === '>') return '&gt;';
         return m;
-    }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
-        return c;
     });
 }
 
 // ========== НАСТРОЙКА СОБЫТИЙ ==========
-function setupEventListeners() {
+function setupCatalogEventListeners() {
     // Вкладки
-    document.querySelectorAll('.tab').forEach(tab => {
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
         tab.addEventListener('click', () => {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            tabs.forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
             currentCategory = tab.dataset.category;
             renderCatalog();
@@ -383,37 +396,44 @@ function setupEventListeners() {
     const searchInput = document.getElementById('searchInput');
     const searchBtn = document.getElementById('searchBtn');
     
-    searchBtn.addEventListener('click', () => {
-        searchQuery = searchInput.value.trim();
-        renderCatalog();
-    });
-    
-    searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            searchQuery = searchInput.value.trim();
+    if (searchBtn) {
+        searchBtn.addEventListener('click', () => {
+            searchQuery = searchInput?.value.trim() || '';
             renderCatalog();
-        }
-    });
+        });
+    }
+    
+    if (searchInput) {
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchQuery = searchInput.value.trim();
+                renderCatalog();
+            }
+        });
+    }
     
     // Категория в поиске
     const categoryFilter = document.getElementById('categoryFilter');
-    categoryFilter.addEventListener('change', () => {
-        const value = categoryFilter.value;
-        if (value === 'all') currentCategory = 'all';
-        else if (value === 'newbuild') currentCategory = 'newbuild';
-        else if (value === 'suburban') currentCategory = 'suburban';
-        
-        // Синхронизируем с вкладками
-        document.querySelectorAll('.tab').forEach(tab => {
-            if (tab.dataset.category === currentCategory) {
-                tab.classList.add('active');
-            } else {
-                tab.classList.remove('active');
-            }
+    if (categoryFilter) {
+        categoryFilter.addEventListener('change', () => {
+            const value = categoryFilter.value;
+            if (value === 'all') currentCategory = 'all';
+            else if (value === 'newbuild') currentCategory = 'newbuild';
+            else if (value === 'suburban') currentCategory = 'suburban';
+            
+            // Синхронизируем с вкладками
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => {
+                if (tab.dataset.category === currentCategory) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+            
+            renderCatalog();
         });
-        
-        renderCatalog();
-    });
+    }
 }
 
 // Делаем функции глобальными для onclick
