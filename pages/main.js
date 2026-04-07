@@ -1,82 +1,256 @@
 /**
  * Модуль каталога застройщиков
- * Версия: 2.1
+ * Версия: 3.0
  * Описание: Отображение каталога ЖК с группировкой по застройщикам и категориям
+ * 
+ * Особенности:
+ * - Автоматическая загрузка данных из data.csv с GitHub
+ * - Кеширование в localStorage
+ * - Фильтрация по категориям (Новостройки/Загородная)
+ * - Поиск по застройщикам, ЖК и менеджерам
  */
 
-// ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
-let catalogDatabase = {
-    developers: {},
-    contacts: []
+// ========== СОСТОЯНИЕ МОДУЛЯ (ЗАКРЫТОЕ) ==========
+const state = {
+    database: {
+        developers: {},
+        contacts: []
+    },
+    currentCategory: 'all',
+    searchQuery: '',
+    lastUpdate: null
 };
 
-let currentCategory = 'all';
-let searchQuery = '';
+// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 
-// ========== ИНИЦИАЛИЗАЦИЯ ==========
-document.addEventListener('DOMContentLoaded', () => {
-    loadCatalogData();
-    setupCatalogEventListeners();
-    
-    // Обработка параметра категории из URL
-    handleUrlCategory();
-});
-
-// ========== ЗАГРУЗКА ДАННЫХ ==========
-function loadCatalogData() {
-    const saved = localStorage.getItem('contactsDatabase');
-    console.log('Загрузка данных из localStorage:', saved ? 'есть данные' : 'нет данных');
-    
-    if (saved) {
-        try {
-            const fullData = JSON.parse(saved);
-            console.log('Распарсенные данные:', fullData);
-            console.log('Застройщиков:', Object.keys(fullData.developers || {}).length);
-            console.log('Контактов:', (fullData.contacts || []).length);
-            
-            catalogDatabase = {
-                developers: fullData.developers || {},
-                contacts: fullData.contacts || []
-            };
-            
-            // Дополнительно: проверяем и добавляем категории где их нет
-            for (let devName in catalogDatabase.developers) {
-                if (!catalogDatabase.developers[devName].category) {
-                    // Автоопределение категории по названию
-                    const isSuburban = devName.toLowerCase().includes('кп') || 
-                                      devName.toLowerCase().includes('поселок') ||
-                                      devName.toLowerCase().includes('деревня') ||
-                                      devName.toLowerCase().includes('загород');
-                    catalogDatabase.developers[devName].category = isSuburban ? 'suburban' : 'newbuild';
-                }
-            }
-            
-        } catch(e) {
-            console.error('Ошибка загрузки', e);
-            initCatalogDemoData();
-        }
-    } else {
-        console.log('Нет данных в localStorage, загружаем демо-данные');
-        initCatalogDemoData();
-    }
-    
-    // Выводим итоговую статистику
-    console.log('Итоговые данные для отображения:');
-    console.log('- Застройщиков:', Object.keys(catalogDatabase.developers).length);
-    console.log('- Контактов:', catalogDatabase.contacts.length);
-    
-    renderCatalog();
+/**
+ * Экранирование HTML специальных символов
+ * @param {string} str - Входная строка
+ * @returns {string} - Экранированная строка
+ */
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>]/g, (m) => {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
 }
 
 /**
- * Инициализация демонстрационных данных для каталога
+ * Форматирование номера телефона для отображения
+ * @param {string} phone - Номер телефона
+ * @returns {string} - Отформатированный номер
  */
-function initCatalogDemoData() {
-    catalogDatabase = {
+function formatPhoneForDisplay(phone) {
+    if (!phone) return '';
+    let cleaned = String(phone).replace(/[^\d+]/g, '');
+    if (cleaned.startsWith('8') && cleaned.length === 11) {
+        cleaned = '+7' + cleaned.slice(1);
+    }
+    if (cleaned.length === 12 && cleaned.startsWith('+7')) {
+        return cleaned.replace(/(\+7)(\d{3})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3-$4-$5');
+    }
+    return phone;
+}
+
+/**
+ * Показать всплывающее уведомление
+ * @param {string} message - Текст уведомления
+ * @param {boolean} isError - Флаг ошибки
+ */
+function showToast(message, isError = false) {
+    const existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+    
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.style.background = isError ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.9)';
+    toast.innerHTML = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2500);
+}
+
+// ========== ЗАГРУЗКА ДАННЫХ ИЗ CSV ==========
+
+/**
+ * Парсинг CSV в структуру базы данных
+ * @param {string} csvText - Содержимое CSV файла
+ * @returns {Object} - Объект с developers и contacts
+ */
+function parseCSVToDatabase(csvText) {
+    const lines = csvText.split('\n');
+    if (lines.length === 0) return { developers: {}, contacts: [] };
+    
+    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+    
+    const developers = {};
+    const contacts = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // Парсим CSV с учетом кавычек
+        const row = [];
+        let inQuotes = false;
+        let current = '';
+        
+        for (const char of line) {
+            if (char === '"') {
+                inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+                row.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        row.push(current.trim());
+        
+        // Извлекаем значения по индексам
+        const developer = row[0]?.replace(/^"|"$/g, '')?.trim();
+        const complex = row[1]?.replace(/^"|"$/g, '')?.trim();
+        const address = row[2]?.replace(/^"|"$/g, '')?.trim() || '';
+        const opAddress = row[3]?.replace(/^"|"$/g, '')?.trim() || '';
+        const commonPhone = row[4]?.replace(/^"|"$/g, '')?.trim() || '';
+        const manager = row[5]?.replace(/^"|"$/g, '')?.trim();
+        const managerPhone = row[6]?.replace(/^"|"$/g, '')?.trim();
+        const role = row[7]?.replace(/^"|"$/g, '')?.trim() || 'менеджер';
+        const category = row[8]?.replace(/^"|"$/g, '')?.trim() || 'newbuild';
+        
+        if (!developer || !complex) continue;
+        
+        // Очищаем названия от мусора
+        const cleanDeveloper = developer
+            .replace(/Сайт|ТГ-канал|Realt.one/g, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+        const cleanComplex = complex
+            .replace(/Сайт|ТГ-канал|Realt.one/g, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+        
+        // Добавляем застройщика
+        if (!developers[cleanDeveloper]) {
+            developers[cleanDeveloper] = {
+                id: 'dev_' + Date.now() + '_' + Math.random(),
+                complexes: [],
+                address: address,
+                opAddress: opAddress,
+                commonPhone: commonPhone,
+                category: category
+            };
+        }
+        
+        const devData = developers[cleanDeveloper];
+        
+        // Добавляем ЖК
+        if (!devData.complexes.includes(cleanComplex)) {
+            devData.complexes.push(cleanComplex);
+        }
+        
+        // Обновляем адреса и телефоны
+        if (address && !devData.address) devData.address = address;
+        if (opAddress && !devData.opAddress) devData.opAddress = opAddress;
+        if (commonPhone && !devData.commonPhone) devData.commonPhone = commonPhone;
+        
+        // Добавляем контакт (если это менеджер, а не общий телефон)
+        if (manager && manager !== 'Общий телефон' && manager !== 'Телефон ОП' && managerPhone) {
+            const exists = contacts.some(c => 
+                c.developer === cleanDeveloper && 
+                c.complex === cleanComplex && 
+                c.name === manager
+            );
+            
+            if (!exists) {
+                contacts.push({
+                    developer: cleanDeveloper,
+                    complex: cleanComplex,
+                    name: manager,
+                    phone: managerPhone,
+                    role: role
+                });
+            }
+        }
+    }
+    
+    return { developers, contacts };
+}
+
+/**
+ * Загрузка данных из CSV файла с GitHub
+ * @returns {Promise<boolean>} - Успех загрузки
+ */
+async function loadDataFromGitHub() {
+    const csvUrl = 'https://raw.githubusercontent.com/allikk38/realty-search/main/data.csv';
+    
+    try {
+        const response = await fetch(csvUrl + '?t=' + Date.now());
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const csvText = await response.text();
+        const parsedData = parseCSVToDatabase(csvText);
+        
+        if (parsedData && Object.keys(parsedData.developers).length > 0) {
+            // Сохраняем в localStorage
+            localStorage.setItem('contactsDatabase', JSON.stringify(parsedData));
+            localStorage.setItem('lastDataUpdate', new Date().toISOString());
+            console.log('✅ Данные автоматически обновлены из GitHub');
+            console.log(`   Застройщиков: ${Object.keys(parsedData.developers).length}`);
+            console.log(`   Контактов: ${parsedData.contacts.length}`);
+            return true;
+        }
+    } catch (err) {
+        console.error('Ошибка загрузки данных с GitHub:', err);
+        return false;
+    }
+}
+
+/**
+ * Загрузка данных из localStorage
+ * @returns {boolean} - Успех загрузки
+ */
+function loadDataFromLocalStorage() {
+    const saved = localStorage.getItem('contactsDatabase');
+    if (!saved) return false;
+    
+    try {
+        const fullData = JSON.parse(saved);
+        state.database = {
+            developers: fullData.developers || {},
+            contacts: fullData.contacts || []
+        };
+        
+        // Добавляем категории, если их нет
+        for (const devName in state.database.developers) {
+            if (!state.database.developers[devName].category) {
+                const isSuburban = devName.toLowerCase().includes('кп') || 
+                                  devName.toLowerCase().includes('поселок') ||
+                                  devName.toLowerCase().includes('деревня') ||
+                                  devName.toLowerCase().includes('загород');
+                state.database.developers[devName].category = isSuburban ? 'suburban' : 'newbuild';
+            }
+        }
+        
+        state.lastUpdate = localStorage.getItem('lastDataUpdate');
+        return true;
+    } catch(e) {
+        console.error('Ошибка загрузки из localStorage:', e);
+        return false;
+    }
+}
+
+/**
+ * Инициализация демонстрационных данных (на случай, если нет данных)
+ */
+function initDemoData() {
+    state.database = {
         developers: {
             "Расцветай": {
                 id: "dev_1",
-                complexes: ["Эко-квартал на Кедровой", "Расцветай на Красном", "Сакура Парк", "Расцветай на Зорге", "Цветной Бульвар", "Квартал на Игарской", "Тайм Парк", "Лофт.Наука"],
+                complexes: ["Эко-квартал на Кедровой", "Расцветай на Красном", "Сакура Парк", "Расцветай на Зорге"],
                 address: "",
                 commonPhone: "+7(383) 255-88-22",
                 opAddress: "",
@@ -97,100 +271,53 @@ function initCatalogDemoData() {
                 commonPhone: "",
                 opAddress: "",
                 category: "newbuild"
-            },
-            "ГК Союз": {
-                id: "dev_4",
-                complexes: ["Самоцветы"],
-                address: "",
-                commonPhone: "383-20-23",
-                opAddress: "",
-                category: "newbuild"
-            },
-            "ГК Поляков": {
-                id: "dev_5",
-                complexes: ["Актив"],
-                address: "г. Новосибирск, ул. Дуси Ковальчук, 246/1 (Актив)",
-                commonPhone: "+7 (383) 390",
-                opAddress: "",
-                category: "newbuild"
-            },
-            "КПД-Газстрой": {
-                id: "dev_6",
-                complexes: ["Чистая Слобода", "Тайгинский парк", "Калина Красная"],
-                address: "",
-                commonPhone: "+7 (383) 363-24-80",
-                opAddress: "Красный проспект, 39",
-                category: "newbuild"
-            },
-            "КП «Сосновый Бор»": {
-                id: "dev_7",
-                complexes: ["Сосновый Бор 1", "Сосновый Бор 2"],
-                address: "Новосибирский район, пос. Кудряшовский",
-                commonPhone: "+7 (383) 123-45-67",
-                opAddress: "",
-                category: "suburban"
-            },
-            "Загородный Клуб «Береговой»": {
-                id: "dev_8",
-                complexes: ["Береговой квартал", "Резиденция Берег"],
-                address: "Искитимский район, с. Береговое",
-                commonPhone: "+7 (383) 987-65-43",
-                opAddress: "",
-                category: "suburban"
             }
         },
         contacts: [
-            // Расцветай
             { developer: "Расцветай", complex: "Эко-квартал на Кедровой", name: "Данил Швец", phone: "+7 961 873-63-10", role: "менеджер" },
             { developer: "Расцветай", complex: "Эко-квартал на Кедровой", name: "Александра Гаммель", phone: "+7 961 848-39-56", role: "менеджер" },
-            { developer: "Расцветай", complex: "Расцветай на Красном", name: "Денис Бородин", phone: "+7 960 792-82-68", role: "менеджер" },
-            { developer: "Расцветай", complex: "Расцветай на Красном", name: "Алевтина Некрасова", phone: "+7 960 792-89-17", role: "менеджер" },
-            { developer: "Расцветай", complex: "Расцветай на Красном", name: "Римма Усманова", phone: "+7 962 838-39-92", role: "менеджер" },
-            { developer: "Расцветай", complex: "Расцветай на Красном", name: "Ирина Бойцова", phone: "+7 962 838 39 94", role: "менеджер" },
-            { developer: "Расцветай", complex: "Сакура Парк", name: "Андрей Булавин", phone: "+7 960 792-82-46", role: "менеджер" },
-            { developer: "Расцветай", complex: "Сакура Парк", name: "Олеся Леонтьева", phone: "+7 960 792-88-43", role: "менеджер" },
-            { developer: "Расцветай", complex: "Сакура Парк", name: "Мария Калифкина", phone: "+7 960 792-83-97", role: "менеджер" },
-            { developer: "Расцветай", complex: "Расцветай на Зорге", name: "Татьяна Мартынова", phone: "+7 961 226-59-43", role: "менеджер" },
-            
-            // VIRA
-            { developer: "VIRA (Вира)", complex: "CITATUM (Цитатум)", name: "Екатерина Рольгайзер", phone: "+7 913 723-00-37", role: "специалист по работе с партнерами" },
-            { developer: "VIRA (Вира)", complex: "CITATUM (Цитатум)", name: "Татьяна Меренцова", phone: "+7 999 320 26 00", role: "специалист по работе с партнерами" },
-            { developer: "VIRA (Вира)", complex: "CITATUM (Цитатум)", name: "Максим Попов", phone: "+7 (923) 242-37-72", role: "специалист по работе с партнерами" },
-            
-            // Брусника
-            { developer: "Брусника. Сибакадемстрой", complex: "Европейский Берег", name: "Анатолий Шелудько", phone: "+7 999 467 9278", role: "менеджер" },
-            { developer: "Брусника. Сибакадемстрой", complex: "Европейский Берег", name: "Роман Семенец", phone: "+7 913 461 7222", role: "менеджер" },
-            { developer: "Брусника. Сибакадемстрой", complex: "Европейский Берег", name: "Даниил Белов", phone: "+7 913 200 1855", role: "менеджер" },
-            { developer: "Брусника. Сибакадемстрой", complex: "Авиатор", name: "Максим Попов", phone: "+7 999 463 3627", role: "менеджер" },
-            { developer: "Брусника. Сибакадемстрой", complex: "Авиатор", name: "Виктор Павлов", phone: "+7 913 627 5181", role: "менеджер" },
-            
-            // ГК Союз
-            { developer: "ГК Союз", complex: "Самоцветы", name: "Алёна Филиппова", phone: "+7 923 107-15-56", role: "менеджер" },
-            { developer: "ГК Союз", complex: "Самоцветы", name: "Арина Шайбекова", phone: "+7 923 220-11-47", role: "менеджер" },
-            
-            // ГК Поляков
-            { developer: "ГК Поляков", complex: "Актив", name: "Николай Драницын", phone: "8-913-786-0647", role: "менеджер" },
-            { developer: "ГК Поляков", complex: "Актив", name: "Максим Леонов", phone: "+7 923 237 88 98", role: "менеджер" },
-            
-            // КПД-Газстрой
-            { developer: "КПД-Газстрой", complex: "Чистая Слобода", name: "Светлана Дудина", phone: "+7 913 981-00-71", role: "менеджер" },
-            { developer: "КПД-Газстрой", complex: "Чистая Слобода", name: "Белая Татьяна", phone: "+7 965 822-00-73", role: "менеджер" },
-            
-            // Загородка
-            { developer: "КП «Сосновый Бор»", complex: "Сосновый Бор 1", name: "Ирина Соснова", phone: "+7 913 123-45-67", role: "менеджер" },
-            { developer: "КП «Сосновый Бор»", complex: "Сосновый Бор 2", name: "Алексей Боровой", phone: "+7 913 234-56-78", role: "руководитель ОП" },
-            { developer: "Загородный Клуб «Береговой»", complex: "Береговой квартал", name: "Мария Прибрежная", phone: "+7 913 345-67-89", role: "менеджер" }
+            { developer: "Расцветай", complex: "Расцветай на Красном", name: "Денис Бородин", phone: "+7 960 792-82-68", role: "менеджер" }
         ]
     };
+    localStorage.setItem('contactsDatabase', JSON.stringify(state.database));
+    console.log('📦 Загружены демо-данные');
+}
+
+/**
+ * Основная функция загрузки данных
+ */
+async function loadCatalogData() {
+    // Сначала пробуем загрузить свежие данные с GitHub
+    const updated = await loadDataFromGitHub();
+    
+    if (!updated) {
+        // Если не удалось загрузить с GitHub, берем из localStorage
+        if (!loadDataFromLocalStorage()) {
+            initDemoData();
+        }
+    } else {
+        // Данные уже загружены в loadDataFromGitHub и сохранены в localStorage
+        loadDataFromLocalStorage();
+    }
+    
+    console.log('📊 Итоговые данные:');
+    console.log(`   Застройщиков: ${Object.keys(state.database.developers).length}`);
+    console.log(`   Контактов: ${state.database.contacts.length}`);
+    
+    renderCatalog();
 }
 
 // ========== ОБРАБОТКА ПАРАМЕТРОВ URL ==========
+
+/**
+ * Обработка параметра категории из URL
+ */
 function handleUrlCategory() {
     const urlParams = new URLSearchParams(window.location.search);
     const category = urlParams.get('category');
     
     if (category === 'newbuild') {
-        currentCategory = 'newbuild';
+        state.currentCategory = 'newbuild';
         const newbuildTab = document.querySelector('.tab[data-category="newbuild"]');
         if (newbuildTab) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -201,7 +328,7 @@ function handleUrlCategory() {
             headerTitle.innerHTML = '<i class="fas fa-city"></i> Новостройки Новосибирска';
         }
     } else if (category === 'suburban') {
-        currentCategory = 'suburban';
+        state.currentCategory = 'suburban';
         const suburbanTab = document.querySelector('.tab[data-category="suburban"]');
         if (suburbanTab) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -214,50 +341,35 @@ function handleUrlCategory() {
     }
 }
 
-// ========== ФОРМАТИРОВАНИЕ ТЕЛЕФОНА ==========
-function formatPhoneForDisplay(phone) {
-    if (!phone) return '';
-    let cleaned = String(phone).replace(/[^\d+]/g, '');
-    if (cleaned.startsWith('8') && cleaned.length === 11) {
-        cleaned = '+7' + cleaned.slice(1);
-    }
-    if (cleaned.length === 12 && cleaned.startsWith('+7')) {
-        return cleaned.replace(/(\+7)(\d{3})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3-$4-$5');
-    }
-    return phone;
-}
-
 // ========== ПОЛУЧЕНИЕ ОТФИЛЬТРОВАННЫХ ЗАСТРОЙЩИКОВ ==========
+
+/**
+ * Получение отфильтрованных застройщиков
+ * @returns {Array} - Массив отфильтрованных застройщиков
+ */
 function getFilteredDevelopers() {
-    // Преобразуем объект в массив для удобной фильтрации
-    let developers = Object.entries(catalogDatabase.developers).map(([name, data]) => ({
+    let developers = Object.entries(state.database.developers).map(([name, data]) => ({
         name: name,
         ...data
     }));
     
-    console.log('Всего застройщиков до фильтрации:', developers.length);
-    
     // Фильтр по категории
-    if (currentCategory !== 'all') {
-        developers = developers.filter(dev => dev.category === currentCategory);
-        console.log(`После фильтра по категории "${currentCategory}":`, developers.length);
+    if (state.currentCategory !== 'all') {
+        developers = developers.filter(dev => dev.category === state.currentCategory);
     }
     
     // Поиск
-    if (searchQuery) {
-        const query = searchQuery.toLowerCase();
+    if (state.searchQuery) {
+        const query = state.searchQuery.toLowerCase();
         developers = developers.filter(dev => {
-            // Поиск по названию застройщика
             if (dev.name.toLowerCase().includes(query)) return true;
             
-            // Поиск по ЖК
             const hasMatchingComplex = dev.complexes.some(complex => 
                 String(complex).toLowerCase().includes(query)
             );
             if (hasMatchingComplex) return true;
             
-            // Поиск по контактам
-            const hasMatchingContact = catalogDatabase.contacts.some(contact => 
+            const hasMatchingContact = state.database.contacts.some(contact => 
                 contact.developer === dev.name && 
                 (contact.name.toLowerCase().includes(query) || 
                  contact.phone.includes(query))
@@ -266,7 +378,6 @@ function getFilteredDevelopers() {
             
             return false;
         });
-        console.log(`После поиска "${searchQuery}":`, developers.length);
     }
     
     // Сортировка по алфавиту
@@ -276,30 +387,6 @@ function getFilteredDevelopers() {
 }
 
 // ========== ОТОБРАЖЕНИЕ КАТАЛОГА ==========
-function renderCatalog() {
-    const catalog = document.getElementById('catalog');
-    if (!catalog) return;
-    
-    const filteredDevs = getFilteredDevelopers();
-    
-    if (filteredDevs.length === 0) {
-        catalog.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-search"></i>
-                <p>Ничего не найдено по вашему запросу</p>
-                <button class="btn btn-outline" onclick="window.clearSearch()" style="margin-top: 20px;">
-                    <i class="fas fa-undo"></i> Очистить поиск
-                </button>
-            </div>
-        `;
-        return;
-    }
-    
-    catalog.innerHTML = filteredDevs.map(dev => renderDeveloperCard(dev)).join('');
-    
-    // Добавляем обработчики после рендера
-    attachCatalogEventHandlers();
-}
 
 /**
  * Рендер карточки застройщика
@@ -311,12 +398,11 @@ function renderDeveloperCard(developer) {
     const categoryIcon = category === 'suburban' ? 'fa-tree' : 'fa-city';
     const categoryText = category === 'suburban' ? 'Загородная' : 'Новостройка';
     
-    // Получаем уникальные ЖК с их контактами
     const complexesWithContacts = developer.complexes.map(complex => ({
         name: complex,
         commonPhone: developer.commonPhone || '',
         address: developer.address || developer.opAddress || '',
-        managers: catalogDatabase.contacts.filter(c => c.developer === developer.name && c.complex === complex)
+        managers: state.database.contacts.filter(c => c.developer === developer.name && c.complex === complex)
     }));
     
     const totalContacts = complexesWithContacts.reduce((sum, c) => sum + c.managers.length, 0);
@@ -340,7 +426,7 @@ function renderDeveloperCard(developer) {
                 <i class="fas fa-chevron-down toggle-icon"></i>
             </div>
             <div class="complexes-list">
-                ${complexesWithContacts.map(complex => renderComplexCard(complex, developer.name)).join('')}
+                ${complexesWithContacts.map(complex => renderComplexCard(complex)).join('')}
             </div>
         </div>
     `;
@@ -349,10 +435,9 @@ function renderDeveloperCard(developer) {
 /**
  * Рендер карточки ЖК
  * @param {Object} complex - Объект ЖК
- * @param {string} developerName - Название застройщика
  * @returns {string} HTML строка
  */
-function renderComplexCard(complex, developerName) {
+function renderComplexCard(complex) {
     const hasManagers = complex.managers.length > 0;
     const hasCommonPhone = complex.commonPhone;
     
@@ -413,7 +498,34 @@ function renderComplexCard(complex, developerName) {
     `;
 }
 
+/**
+ * Отрисовка каталога
+ */
+function renderCatalog() {
+    const catalog = document.getElementById('catalog');
+    if (!catalog) return;
+    
+    const filteredDevs = getFilteredDevelopers();
+    
+    if (filteredDevs.length === 0) {
+        catalog.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-search"></i>
+                <p>Ничего не найдено по вашему запросу</p>
+                <button class="btn btn-outline" onclick="window.clearSearch()" style="margin-top: 20px;">
+                    <i class="fas fa-undo"></i> Очистить поиск
+                </button>
+            </div>
+        `;
+        return;
+    }
+    
+    catalog.innerHTML = filteredDevs.map(dev => renderDeveloperCard(dev)).join('');
+    attachCatalogEventHandlers();
+}
+
 // ========== ОБРАБОТЧИКИ СОБЫТИЙ ==========
+
 function toggleDeveloper(element) {
     const card = element.closest('.developer-card');
     if (card) card.classList.toggle('collapsed');
@@ -426,53 +538,30 @@ function toggleComplex(element) {
 
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).then(() => {
-        showCatalogToast(`✅ Скопировано: ${text}`);
+        showToast(`✅ Скопировано: ${text}`);
     }).catch(() => {
-        showCatalogToast('❌ Не удалось скопировать', true);
+        showToast('❌ Не удалось скопировать', true);
     });
-}
-
-function showCatalogToast(message, isError = false) {
-    const existing = document.querySelector('.toast');
-    if (existing) existing.remove();
-    
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.style.background = isError ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.9)';
-    toast.innerHTML = message;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2500);
 }
 
 function clearSearch() {
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.value = '';
-    searchQuery = '';
+    state.searchQuery = '';
     renderCatalog();
 }
 
 function attachCatalogEventHandlers() {
-    // По умолчанию все карточки застройщиков развернуты, ЖК свернуты
     document.querySelectorAll('.developer-card').forEach(card => {
         card.classList.remove('collapsed');
     });
-    
     document.querySelectorAll('.complex-item').forEach(item => {
         item.classList.add('collapsed');
     });
 }
 
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
-
 // ========== НАСТРОЙКА СОБЫТИЙ ==========
+
 function setupCatalogEventListeners() {
     // Вкладки
     const tabs = document.querySelectorAll('.tab');
@@ -480,7 +569,7 @@ function setupCatalogEventListeners() {
         tab.addEventListener('click', () => {
             tabs.forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
-            currentCategory = tab.dataset.category;
+            state.currentCategory = tab.dataset.category;
             renderCatalog();
         });
     });
@@ -491,7 +580,7 @@ function setupCatalogEventListeners() {
     
     if (searchBtn) {
         searchBtn.addEventListener('click', () => {
-            searchQuery = searchInput?.value.trim() || '';
+            state.searchQuery = searchInput?.value.trim() || '';
             renderCatalog();
         });
     }
@@ -499,7 +588,7 @@ function setupCatalogEventListeners() {
     if (searchInput) {
         searchInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
-                searchQuery = searchInput.value.trim();
+                state.searchQuery = searchInput.value.trim();
                 renderCatalog();
             }
         });
@@ -510,14 +599,13 @@ function setupCatalogEventListeners() {
     if (categoryFilter) {
         categoryFilter.addEventListener('change', () => {
             const value = categoryFilter.value;
-            if (value === 'all') currentCategory = 'all';
-            else if (value === 'newbuild') currentCategory = 'newbuild';
-            else if (value === 'suburban') currentCategory = 'suburban';
+            if (value === 'all') state.currentCategory = 'all';
+            else if (value === 'newbuild') state.currentCategory = 'newbuild';
+            else if (value === 'suburban') state.currentCategory = 'suburban';
             
-            // Синхронизируем с вкладками
             const tabs = document.querySelectorAll('.tab');
             tabs.forEach(tab => {
-                if (tab.dataset.category === currentCategory) {
+                if (tab.dataset.category === state.currentCategory) {
                     tab.classList.add('active');
                 } else {
                     tab.classList.remove('active');
@@ -529,8 +617,22 @@ function setupCatalogEventListeners() {
     }
 }
 
+// ========== ИНИЦИАЛИЗАЦИЯ ==========
+
+/**
+ * Инициализация приложения
+ */
+async function init() {
+    await loadCatalogData();
+    setupCatalogEventListeners();
+    handleUrlCategory();
+}
+
 // Делаем функции глобальными для onclick
 window.toggleDeveloper = toggleDeveloper;
 window.toggleComplex = toggleComplex;
 window.copyToClipboard = copyToClipboard;
 window.clearSearch = clearSearch;
+
+// Запуск приложения
+document.addEventListener('DOMContentLoaded', init);
