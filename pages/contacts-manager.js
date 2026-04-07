@@ -4,7 +4,9 @@
  * Описание: Импортирует и запускает AdminPanel
  */
 
+console.log('✅ contacts-manager.js загружен');
 import { AdminPanel } from './modules/adminPanel.js';
+console.log('✅ AdminPanel импортирован');
 
 // Создаем экземпляр и инициализируем
 const adminPanel = new AdminPanel();
