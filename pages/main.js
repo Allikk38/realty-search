@@ -1,6 +1,6 @@
 /**
  * Модуль каталога застройщиков
- * Версия: 4.0
+ * Версия: 4.1
  * Описание: Отображение каталога ЖК с группировкой по застройщикам и категориям
  * 
  * Особенности:
@@ -9,6 +9,7 @@
  * - Фильтрация по категориям (Новостройки/Загородная)
  * - Поиск по застройщикам, ЖК и менеджерам
  * - Исправлена проблема с пустыми застройщиками
+ * - ВСЕ ГРУППЫ СВЁРНУТЫ ПО УМОЛЧАНИЮ
  */
 
 // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
@@ -361,8 +362,9 @@ export function renderDeveloperCard(developer, contacts) {
     // Если у застройщика есть адрес офиса продаж, показываем его
     const hasOfficeAddress = developer.opAddress && developer.opAddress !== '';
     
+    // ИСПРАВЛЕНО: добавлен класс collapsed для сворачивания застройщика по умолчанию
     return `
-        <div class="developer-card" data-developer="${escapeHtml(developer.name)}" data-category="${category}">
+        <div class="developer-card collapsed" data-developer="${escapeHtml(developer.name)}" data-category="${category}">
             <div class="developer-header" data-toggle="developer">
                 <div class="developer-info">
                     <div class="developer-icon">
@@ -396,8 +398,9 @@ export function renderComplexCard(complex) {
     const hasManagers = complex.managers.length > 0;
     const hasCommonPhone = complex.commonPhone && complex.commonPhone !== '';
     
+    // ИСПРАВЛЕНО: добавлен класс collapsed для сворачивания ЖК по умолчанию
     return `
-        <div class="complex-item" data-complex="${escapeHtml(complex.name)}">
+        <div class="complex-item collapsed" data-complex="${escapeHtml(complex.name)}">
             <div class="complex-header" data-toggle="complex">
                 <div class="complex-name">
                     <i class="fas fa-building"></i>
