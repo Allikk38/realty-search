@@ -5,21 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Управление контактами ЖК - Админ-панель</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Библиотека для экспорта в Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <style>
         /* ========================================
-           CSS СТИЛИ ДЛЯ АДМИН-ПАНЕЛИ
-           Версия: 1.0
-           Описание: Стили для управления контактами ЖК
+           CSS СТИЛИ ДЛЯ НОВОЙ АДМИН-ПАНЕЛИ
+           Версия: 3.0
+           Описание: Плоская таблица + форма справа
            ======================================== */
 
-        /* ----- СБРОС СТИЛЕЙ ----- */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
 
-        /* ----- ОСНОВНЫЕ СТИЛИ ----- */
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #020617 100%);
@@ -27,30 +27,30 @@
             padding: 20px;
         }
 
-        /* Контейнер с эффектом стекла */
+        /* Контейнер */
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.06);
             backdrop-filter: blur(20px);
             border-radius: 32px;
-            padding: 30px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
         }
 
-        /* ----- HEADER (ШАПКА) ----- */
+        /* Заголовок */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
             flex-wrap: wrap;
-            gap: 15px;
+            gap: 16px;
         }
 
         h1 {
-            font-size: 2rem;
-            background: linear-gradient(135deg, #a78bfa 0%, #3b82f6 50%, #06b6d4 100%);
+            font-size: 1.8rem;
+            background: linear-gradient(135deg, #a78bfa 0%, #3b82f6 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -58,424 +58,625 @@
 
         .sub {
             color: #94a3b8;
-            margin-top: 5px;
+            font-size: 0.85rem;
+            margin-top: 4px;
         }
 
-        /* ----- КНОПКИ ----- */
+        /* Статистика */
+        .stats-bar {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+        }
+
+        .stat-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .stat-icon {
+            width: 40px;
+            height: 40px;
+            background: rgba(167, 139, 250, 0.2);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: #a78bfa;
+        }
+
+        .stat-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: #94a3b8;
+        }
+
+        /* Кнопки */
         .btn {
-            padding: 12px 24px;
+            padding: 10px 20px;
             border: none;
-            border-radius: 48px;
+            border-radius: 40px;
             cursor: pointer;
             font-weight: 600;
-            transition: all 0.3s ease;
+            transition: all 0.2s ease;
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
         }
 
-        /* Основная кнопка (градиент фиолетовый-синий) */
         .btn-primary {
-            background: linear-gradient(135deg, #a78bfa 0%, #3b82f6 100%);
+            background: linear-gradient(135deg, #a78bfa, #3b82f6);
             color: white;
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 8px 20px rgba(167, 139, 250, 0.3);
         }
 
-        /* Кнопка успеха (зеленая) */
         .btn-success {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            background: linear-gradient(135deg, #10b981, #059669);
             color: white;
         }
 
-        /* Кнопка опасности (красная) */
         .btn-danger {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            background: linear-gradient(135deg, #ef4444, #dc2626);
             color: white;
         }
 
-        /* Вторичная кнопка (полупрозрачная) */
         .btn-secondary {
             background: rgba(255, 255, 255, 0.1);
             color: #e2e8f0;
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
-        /* ----- ПОИСК И ФИЛЬТРЫ ----- */
-        .search-section {
-            margin-bottom: 30px;
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
         }
 
-        .search-box {
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.75rem;
+        }
+
+        /* Поиск и фильтры */
+        .search-filters {
             display: flex;
             gap: 12px;
-            margin-bottom: 20px;
             flex-wrap: wrap;
+            margin-bottom: 24px;
+            align-items: center;
         }
 
-        .search-box input {
+        .search-input {
             flex: 2;
-            padding: 14px 20px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 48px;
+            min-width: 200px;
+            padding: 12px 18px;
             background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 40px;
             color: white;
-            font-size: 1rem;
+            font-size: 0.9rem;
         }
 
-        .search-box input::placeholder {
-            color: #94a3b8;
+        .search-input::placeholder {
+            color: #64748b;
         }
 
-        .search-box select {
-            padding: 14px 24px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 48px;
+        .search-input:focus {
+            outline: none;
+            border-color: #a78bfa;
+        }
+
+        .filter-select {
+            padding: 12px 18px;
             background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 40px;
             color: white;
             cursor: pointer;
         }
 
-        /* ----- ФОРМА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ ----- */
-        .form-panel {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 24px;
-            padding: 24px;
-            margin-bottom: 30px;
-            border: 2px solid rgba(167, 139, 250, 0.3);
-            display: none;
+        /* Основная сетка: 2 колонки */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 24px;
         }
 
-        .form-panel.active {
-            display: block;
-            animation: slideIn 0.3s ease;
+        /* Левая колонка - таблица */
+        .table-section {
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 20px;
+            padding: 16px;
+            overflow-x: auto;
+        }
+
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .table-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        /* Таблица */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 10px 8px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            vertical-align: middle;
+        }
+
+        .data-table th {
+            background: rgba(255, 255, 255, 0.05);
+            font-weight: 600;
+            color: #cbd5e1;
+            position: sticky;
+            top: 0;
+        }
+
+        .data-table tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .data-table td.editable {
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .data-table td.editable:hover {
+            background: rgba(167, 139, 250, 0.2);
+        }
+
+        .data-table td.editing {
+            background: rgba(167, 139, 250, 0.3);
+            padding: 0;
+        }
+
+        .data-table td.editing input,
+        .data-table td.editing select {
+            width: 100%;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid #a78bfa;
+            border-radius: 8px;
+            color: white;
+            font-size: 0.8rem;
+        }
+
+        .data-table td.editing select option {
+            background: #1e293b;
+        }
+
+        .action-cell {
+            white-space: nowrap;
+        }
+
+        .action-cell button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 8px;
+            color: #94a3b8;
+            transition: all 0.2s;
+        }
+
+        .action-cell button:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .action-cell .delete-btn:hover {
+            color: #ef4444;
+        }
+
+        .action-cell .save-btn:hover {
+            color: #10b981;
+        }
+
+        /* Пагинация */
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .pagination-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .page-btn {
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .page-btn:hover:not(:disabled) {
+            background: #a78bfa;
+        }
+
+        .page-btn.active {
+            background: #a78bfa;
+        }
+
+        .page-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .per-page-select {
+            padding: 6px 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: white;
+        }
+
+        /* Правая колонка - форма */
+        .form-section {
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 20px;
+            padding: 20px;
+            border: 1px solid rgba(167, 139, 250, 0.3);
+            height: fit-content;
+        }
+
+        .form-title {
+            font-size: 1.2rem;
+            color: white;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 8px;
-            color: #cbd5e1;
+            margin-bottom: 6px;
+            color: #94a3b8;
+            font-size: 0.8rem;
             font-weight: 500;
         }
 
         .form-group input,
         .form-group select {
             width: 100%;
-            padding: 12px 16px;
+            padding: 10px 14px;
             background: rgba(255, 255, 255, 0.1);
             border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 16px;
+            border-radius: 12px;
             color: white;
-            font-size: 1rem;
+            font-size: 0.9rem;
         }
 
-        .form-group input:focus {
+        .form-group input:focus,
+        .form-group select:focus {
             outline: none;
             border-color: #a78bfa;
+        }
+
+        .form-group input.error {
+            border-color: #ef4444;
+            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
         }
 
         .form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            gap: 12px;
         }
 
-        /* ----- БЛОК МЕНЕДЖЕРОВ ----- */
-        .managers-list {
-            margin-top: 20px;
-        }
-
-        .manager-item {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 15px;
-            border-radius: 16px;
-            margin-bottom: 10px;
+        .form-actions {
             display: flex;
-            gap: 15px;
-            align-items: center;
-            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .manager-item input {
+        .form-actions button {
             flex: 1;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 12px;
-            color: white;
+            justify-content: center;
         }
 
-        /* ----- ТАБЛИЦА ДАННЫХ ----- */
-        .table-wrapper {
-            overflow-x: auto;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        th,
-        td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            color: #e2e8f0;
-        }
-
-        th {
-            background: rgba(255, 255, 255, 0.05);
-            font-weight: 600;
-        }
-
-        tr:hover {
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .action-btns {
-            display: flex;
-            gap: 8px;
-        }
-
-        .action-btns button {
-            padding: 6px 12px;
-            font-size: 0.8rem;
-        }
-
-        /* ----- УВЕДОМЛЕНИЯ (TOAST) ----- */
+        /* Уведомления */
         .toast {
             position: fixed;
             bottom: 30px;
             right: 30px;
-            background: rgba(0, 0, 0, 0.9);
+            background: rgba(0, 0, 0, 0.95);
             color: white;
             padding: 12px 24px;
             border-radius: 48px;
             z-index: 1000;
-            animation: slideUp 0.3s ease;
+            animation: slideIn 0.3s ease;
+            font-size: 0.9rem;
         }
 
-        /* ----- СТАТИСТИКА ----- */
-        .stats-bar {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 15px;
-            border-radius: 16px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        /* ----- АНИМАЦИИ ----- */
         @keyframes slideIn {
             from {
                 opacity: 0;
-                transform: translateY(-20px);
+                transform: translateX(100%);
             }
             to {
                 opacity: 1;
-                transform: translateY(0);
+                transform: translateX(0);
             }
         }
 
-        @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        /* ----- АДАПТИВНЫЙ ДИЗАЙН (МОБИЛЬНЫЕ УСТРОЙСТВА) ----- */
-        @media (max-width: 768px) {
-            .container {
-                padding: 20px;
-            }
-            .form-row {
+        /* Адаптив */
+        @media (max-width: 1000px) {
+            .main-grid {
                 grid-template-columns: 1fr;
             }
-            .manager-item {
+            .form-section {
+                order: -1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 16px;
+            }
+            .stats-bar {
                 flex-direction: column;
+                gap: 10px;
+            }
+            .table-actions {
+                flex-direction: column;
+            }
+            .data-table {
+                font-size: 0.7rem;
+            }
+            .data-table th,
+            .data-table td {
+                padding: 6px 4px;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- ========================================
-             ЗАГОЛОВОК И КНОПКИ УПРАВЛЕНИЯ
-        ======================================== -->
+        <!-- ШАПКА -->
         <div class="header">
             <div>
                 <h1><i class="fas fa-address-book"></i> Управление контактами ЖК</h1>
-                <div class="sub">Добавление и редактирование контактов застройщиков</div>
+                <div class="sub">Новостройки и загородная недвижимость Новосибирска</div>
             </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <!-- Кнопка импорта CSV -->
-                <button class="btn btn-secondary" id="importBtn">
-                    <i class="fas fa-upload"></i> Импорт CSV
-                </button>
-                <!-- Кнопка экспорта CSV -->
-                <button class="btn btn-secondary" id="exportBtn">
-                    <i class="fas fa-download"></i> Экспорт CSV
-                </button>
-                <!-- Кнопка добавления нового контакта -->
-                <button class="btn btn-primary" id="showFormBtn">
-                    <i class="fas fa-plus"></i> Новый контакт
-                </button>
-            </div>
-            <!-- Скрытый input для выбора файла при импорте -->
-            <input type="file" id="importFileInput" accept=".csv" style="display: none;">
+            <a href="../app/index.html" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Вернуться в каталог
+            </a>
         </div>
 
-        <!-- ========================================
-             ФОРМА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ КОНТАКТА
-        ======================================== -->
-        <div class="form-panel" id="formPanel">
-            <h3 style="color: white; margin-bottom: 20px;" id="formTitle">
-                <i class="fas fa-plus-circle"></i> Добавление контакта
-            </h3>
-            
-            <!-- Поле выбора/добавления застройщика -->
-            <div class="form-group">
-                <label>Выберите или добавьте застройщика:</label>
-                <input type="text" id="developerInput" 
-                       placeholder="Например: Брусника. Сибакадемстрой" 
-                       list="developersList">
-                <datalist id="developersList"></datalist>
-                <small style="color: #94a3b8;">Можно выбрать из списка или ввести новый</small>
+        <!-- СТАТИСТИКА -->
+        <div class="stats-bar">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-database"></i></div>
+                <div class="stat-info">
+                    <span class="stat-value" id="totalRecords">0</span>
+                    <span class="stat-label">Всего записей</span>
+                </div>
             </div>
-
-            <!-- Поле выбора/добавления ЖК -->
-            <div class="form-group">
-                <label>Выберите или добавьте ЖК:</label>
-                <input type="text" id="complexInput" 
-                       placeholder="Например: Авиатор" 
-                       list="complexesList">
-                <datalist id="complexesList"></datalist>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-building"></i></div>
+                <div class="stat-info">
+                    <span class="stat-value" id="totalDevelopers">0</span>
+                    <span class="stat-label">Застройщиков</span>
+                </div>
             </div>
-
-            <!-- Поле адреса ЖК -->
-            <div class="form-group">
-                <label>Адрес ЖК:</label>
-                <input type="text" id="addressInput" 
-                       placeholder="ул. Примерная, 123">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-home"></i></div>
+                <div class="stat-info">
+                    <span class="stat-value" id="totalComplexes">0</span>
+                    <span class="stat-label">Жилых комплексов</span>
+                </div>
             </div>
-
-            <!-- Поле адреса офиса продаж -->
-            <div class="form-group">
-                <label>Адрес офиса продаж:</label>
-                <input type="text" id="opAddressInput" 
-                       placeholder="ул. Офисная, 456">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-users"></i></div>
+                <div class="stat-info">
+                    <span class="stat-value" id="totalManagers">0</span>
+                    <span class="stat-label">Менеджеров</span>
+                </div>
             </div>
+        </div>
 
-            <!-- Поле общего телефона отдела продаж -->
-            <div class="form-group">
-                <label>Общий телефон отдела продаж:</label>
-                <input type="text" id="commonPhoneInput" 
-                       placeholder="+7 (383) 123-45-67">
-            </div>
+        <!-- ПОИСК И ФИЛЬТРЫ -->
+        <div class="search-filters">
+            <input type="text" id="searchInput" class="search-input" placeholder="🔍 Поиск по всем полям...">
+            <select id="filterDeveloper" class="filter-select">
+                <option value="">Все застройщики</option>
+            </select>
+            <select id="filterCategory" class="filter-select">
+                <option value="">Все категории</option>
+                <option value="newbuild">🏢 Новостройки</option>
+                <option value="suburban">🏡 Загородная</option>
+            </select>
+            <button id="clearFiltersBtn" class="btn btn-secondary btn-sm">
+                <i class="fas fa-undo"></i> Сбросить
+            </button>
+        </div>
 
-            <hr style="border-color: rgba(255,255,255,0.1); margin: 20px 0;">
+        <!-- ОСНОВНАЯ СЕТКА: ТАБЛИЦА + ФОРМА -->
+        <div class="main-grid">
+            <!-- ЛЕВАЯ КОЛОНКА: ТАБЛИЦА -->
+            <div class="table-section">
+                <div class="table-header">
+                    <div class="table-actions">
+                        <button id="importCsvBtn" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-upload"></i> Импорт CSV
+                        </button>
+                        <button id="exportCsvBtn" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-download"></i> Экспорт CSV
+                        </button>
+                        <button id="exportExcelBtn" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-file-excel"></i> Экспорт Excel
+                        </button>
+                        <input type="file" id="importFileInput" accept=".csv" style="display: none;">
+                    </div>
+                </div>
 
-            <!-- Блок добавления менеджеров -->
-            <h4 style="color: white; margin-bottom: 15px;">
-                <i class="fas fa-users"></i> Контактные лица (менеджеры)
-            </h4>
-            
-            <div id="managersContainer">
-                <!-- Шаблон менеджера (динамически добавляется через JS) -->
-                <div class="manager-item">
-                    <input type="text" placeholder="Имя менеджера" class="manager-name">
-                    <input type="text" placeholder="Телефон" class="manager-phone">
-                    <select class="manager-role">
-                        <option value="менеджер">Менеджер</option>
-                        <option value="руководитель ОП">Руководитель ОП</option>
-                        <option value="специалист по работе с партнерами">Специалист по работе с партнерами</option>
-                    </select>
-                    <button class="btn btn-danger remove-manager" style="padding: 8px 16px;">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                <div style="overflow-x: auto;">
+                    <table class="data-table" id="dataTable">
+                        <thead>
+                            <tr>
+                                <th>Застройщик</th>
+                                <th>Название ЖК</th>
+                                <th>Адрес ЖК</th>
+                                <th>Адрес ОП</th>
+                                <th>Общий телефон</th>
+                                <th>Менеджер</th>
+                                <th>Телефон менеджера</th>
+                                <th>Должность</th>
+                                <th>Категория</th>
+                                <th style="width: 70px;">Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            <tr><td colspan="10" style="text-align: center; padding: 40px;">
+                                <i class="fas fa-spinner fa-spin"></i> Загрузка данных...
+                            </td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- ПАГИНАЦИЯ -->
+                <div class="pagination">
+                    <div class="pagination-controls">
+                        <button class="page-btn" id="firstPageBtn" disabled>«</button>
+                        <button class="page-btn" id="prevPageBtn" disabled>‹</button>
+                        <span id="pageInfo" style="color: #94a3b8; font-size: 0.85rem;">Страница 1</span>
+                        <button class="page-btn" id="nextPageBtn" disabled>›</button>
+                        <button class="page-btn" id="lastPageBtn" disabled>»</button>
+                    </div>
+                    <div>
+                        <select id="perPageSelect" class="per-page-select">
+                            <option value="20">20 записей</option>
+                            <option value="50">50 записей</option>
+                            <option value="100">100 записей</option>
+                            <option value="200">200 записей</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
-            <!-- Кнопка добавления нового менеджера -->
-            <button class="btn btn-secondary" id="addManagerBtn" style="margin: 10px 0 20px;">
-                <i class="fas fa-plus"></i> Добавить менеджера
-            </button>
+            <!-- ПРАВАЯ КОЛОНКА: ФОРМА ДОБАВЛЕНИЯ/РЕДАКТИРОВАНИЯ -->
+            <div class="form-section" id="formSection">
+                <div class="form-title" id="formTitle">
+                    <i class="fas fa-plus-circle"></i> Новая запись
+                </div>
+                
+                <div class="form-group">
+                    <label><i class="fas fa-hard-hat"></i> Застройщик *</label>
+                    <input type="text" id="formDeveloper" placeholder="Например: Расцветай" list="developersDatalist">
+                    <datalist id="developersDatalist"></datalist>
+                </div>
 
-            <!-- Кнопки управления формой -->
-            <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                <button class="btn btn-secondary" id="cancelFormBtn">Отмена</button>
-                <button class="btn btn-success" id="saveContactBtn">Сохранить</button>
+                <div class="form-group">
+                    <label><i class="fas fa-building"></i> Название ЖК *</label>
+                    <input type="text" id="formComplex" placeholder="Например: Эко-квартал на Кедровой">
+                </div>
+
+                <div class="form-group">
+                    <label><i class="fas fa-map-marker-alt"></i> Адрес ЖК</label>
+                    <input type="text" id="formAddress" placeholder="ул. Кедровая 80/1а">
+                </div>
+
+                <div class="form-group">
+                    <label><i class="fas fa-map-pin"></i> Адрес офиса продаж</label>
+                    <input type="text" id="formOpAddress" placeholder="ул. Фрунзе 63">
+                </div>
+
+                <div class="form-group">
+                    <label><i class="fas fa-phone-alt"></i> Общий телефон ОП</label>
+                    <input type="text" id="formCommonPhone" placeholder="+7 (383) 255-88-22">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label><i class="fas fa-user-tie"></i> Менеджер</label>
+                        <input type="text" id="formManager" placeholder="Имя менеджера">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-phone"></i> Телефон менеджера</label>
+                        <input type="text" id="formManagerPhone" placeholder="+7 961 873-63-10">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label><i class="fas fa-briefcase"></i> Должность</label>
+                        <select id="formRole">
+                            <option value="менеджер">Менеджер</option>
+                            <option value="руководитель ОП">Руководитель ОП</option>
+                            <option value="специалист по работе с партнерами">Специалист по работе с партнерами</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-tag"></i> Категория</label>
+                        <select id="formCategory">
+                            <option value="newbuild">🏢 Новостройка</option>
+                            <option value="suburban">🏡 Загородная</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button id="clearFormBtn" class="btn btn-secondary">
+                        <i class="fas fa-eraser"></i> Очистить
+                    </button>
+                    <button id="saveFormBtn" class="btn btn-success">
+                        <i class="fas fa-save"></i> Сохранить
+                    </button>
+                </div>
             </div>
-        </div>
-
-        <!-- ========================================
-             ПАНЕЛЬ СТАТИСТИКИ
-        ======================================== -->
-        <div class="stats-bar" id="statsBar">
-            <span><i class="fas fa-building"></i> Застройщиков: <strong id="developersCount">0</strong></span>
-            <span><i class="fas fa-home"></i> ЖК: <strong id="complexesCount">0</strong></span>
-            <span><i class="fas fa-phone"></i> Контактов: <strong id="contactsCount">0</strong></span>
-        </div>
-
-        <!-- ========================================
-             ПОИСК И ФИЛЬТРАЦИЯ
-        ======================================== -->
-        <div class="search-section">
-            <div class="search-box">
-                <input type="text" id="searchInput" 
-                       placeholder="Поиск по застройщику, ЖК или менеджеру...">
-                <select id="filterType">
-                    <option value="all">Все</option>
-                    <option value="developer">Застройщики</option>
-                    <option value="complex">ЖК</option>
-                    <option value="contact">Контакты</option>
-                </select>
-                <button class="btn btn-primary" id="searchBtn">
-                    <i class="fas fa-search"></i> Найти
-                </button>
-            </div>
-        </div>
-
-        <!-- ========================================
-             ТАБЛИЦА С ДАННЫМИ
-        ======================================== -->
-        <div class="table-wrapper">
-            <table id="dataTable">
-                <thead>
-                    <tr>
-                        <th>Застройщик</th>
-                        <th>ЖК</th>
-                        <th>Адрес</th>
-                        <th>Общий телефон</th>
-                        <th>Менеджеры</th>
-                        <th>Действия</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody">
-                    <tr>
-                        <td colspan="6" style="text-align: center;">Загрузка данных...</td>
-                    </tr>
-                </tbody>
-            </table>
         </div>
     </div>
 
-    <!-- Подключение JavaScript модуля -->
-    <script src="../pages/contacts-manager.js"></script>
+    <!-- ПОДКЛЮЧЕНИЕ МОДУЛЯ -->
+    <script type="module" src="../pages/contacts-manager.js"></script>
 </body>
 </html>
