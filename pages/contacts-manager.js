@@ -1,29 +1,36 @@
 /**
  * Модуль управления контактами ЖК
- * Версия: 2.0
+ * Версия: 3.0 (Полная переработка)
+ * Дата: 07.04.2026
+ * 
  * Описание: Админ-панель для управления контактами застройщиков и ЖК
+ * 
+ * Особенности:
+ * - Плоская таблица с 9 колонками (как в CSV)
+ * - Редактирование прямо в таблице (клик по ячейке)
+ * - Форма добавления/редактирования в правой колонке
+ * - Поиск по всем полям
+ * - Фильтрация по застройщику и категории
+ * - Пагинация (20/50/100/200 записей на страницу)
+ * - Импорт/экспорт CSV
+ * - Экспорт в Excel (XLSX)
+ * - Автоматическое форматирование телефонов
+ * - Синхронизация с localStorage в формате для каталога
+ * - Интуитивно понятный интерфейс для непрограммистов
  */
 
-// ========== СОСТОЯНИЕ ПРИЛОЖЕНИЯ (ЗАКРЫТОЕ) ==========
-let state = {
-    database: {
-        developers: {}, // { "Застройщик": { id, complexes: [], address, commonPhone, opAddress, category } }
-        contacts: []    // [{ developer, complex, name, phone, role }]
-    },
-    editMode: false,
-    editId: null
-};
-
-// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+// ========================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ========================================
 
 /**
  * Экранирование HTML специальных символов
  * @param {string} str - Входная строка
  * @returns {string} - Экранированная строка
  */
-function escapeHtml(str) {
+export function escapeHtml(str) {
     if (!str) return '';
-    return str.replace(/[&<>]/g, function(m) {
+    return String(str).replace(/[&<>]/g, (m) => {
         if (m === '&') return '&amp;';
         if (m === '<') return '&lt;';
         if (m === '>') return '&gt;';
@@ -36,20 +43,24 @@ function escapeHtml(str) {
  * @param {string} phone - Номер телефона в любом формате
  * @returns {string} - Отформатированный номер или пустая строка
  */
-function formatPhone(phone) {
+export function formatPhone(phone) {
     if (!phone || phone === 'Общий телефон' || phone === 'Телефон ОП') return '';
     
     let cleaned = String(phone).replace(/[^\d+]/g, '');
     
+    // Обработка 8-ки
     if (cleaned.startsWith('8') && cleaned.length === 11) {
         cleaned = '+7' + cleaned.slice(1);
     }
+    // Обработка 7-ки без плюса
     if (cleaned.startsWith('7') && cleaned.length === 11 && !cleaned.startsWith('+')) {
         cleaned = '+' + cleaned;
     }
+    // Обработка 10 цифр без кода
     if (cleaned.length === 10 && !cleaned.startsWith('+')) {
         cleaned = '+7' + cleaned;
     }
+    // Форматирование +7 XXX XXX-XX-XX
     if (cleaned.length === 12 && cleaned.startsWith('+7')) {
         return cleaned.replace(/(\+7)(\d{3})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3-$4-$5');
     }
@@ -62,495 +73,320 @@ function formatPhone(phone) {
  * @param {string} message - Текст уведомления
  * @param {boolean} isError - Флаг ошибки
  */
-function showToast(message, isError = false) {
+export function showToast(message, isError = false) {
     const existing = document.querySelector('.toast');
     if (existing) existing.remove();
     
     const toast = document.createElement('div');
     toast.className = 'toast';
-    toast.style.background = isError ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.9)';
+    toast.style.background = isError ? 'rgba(239, 68, 68, 0.95)' : 'rgba(0, 0, 0, 0.95)';
     toast.innerHTML = message;
     document.body.appendChild(toast);
+    
     setTimeout(() => toast.remove(), 3000);
 }
 
-// ========== РАБОТА С ХРАНИЛИЩЕМ ==========
-
 /**
- * Сохранение данных в localStorage
+ * Очистка названия от мусора
+ * @param {string} str - Входная строка
+ * @returns {string} - Очищенная строка
  */
-function saveData() {
-    localStorage.setItem('contactsDatabase', JSON.stringify(state.database));
-    updateStats();
-    populateDatalists();
+export function cleanName(str) {
+    if (!str) return '';
+    return str
+        .replace(/Сайт|ТГ-канал|Realt.one/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
 }
 
+// ========================================
+// РАБОТА С ДАННЫМИ (ПЛОСКАЯ ТАБЛИЦА)
+// ========================================
+
 /**
- * Загрузка данных из localStorage
+ * Класс для управления данными (плоская таблица)
+ * Каждая запись соответствует одной строке в CSV
  */
-function loadData() {
-    const saved = localStorage.getItem('contactsDatabase');
-    if (saved) {
+class DataStore {
+    constructor() {
+        this.records = [];      // Массив плоских записей
+        this.developersSet = new Set(); // Уникальные застройщики
+        this.filteredRecords = [];      // Отфильтрованные записи
+        this.currentPage = 1;
+        this.perPage = 20;
+        this.searchQuery = '';
+        this.filterDeveloper = '';
+        this.filterCategory = '';
+    }
+
+    /**
+     * Загрузка данных из localStorage
+     * @returns {boolean} - Успех загрузки
+     */
+    loadFromLocalStorage() {
         try {
-            state.database = JSON.parse(saved);
-        } catch(e) {
-            console.error('Ошибка загрузки', e);
-            initDemoData();
-        }
-    } else {
-        initDemoData();
-    }
-}
-
-/**
- * Инициализация демонстрационных данных
- */
-function initDemoData() {
-    state.database = {
-        developers: {
-            "Расцветай": {
-                id: "dev_1",
-                complexes: ["Эко-квартал на Кедровой", "Расцветай на Красном", "Сакура Парк", "Расцветай на Зорге"],
-                address: "",
-                commonPhone: "+7(383) 255-88-22",
-                opAddress: "",
-                category: "newbuild"
-            },
-            "VIRA (Вира)": {
-                id: "dev_2",
-                complexes: ["CITATUM (Цитатум)"],
-                address: "",
-                commonPhone: "+7 (383) 271-22-22",
-                opAddress: "ул.Фрунзе 63",
-                category: "newbuild"
-            },
-            "Брусника. Сибакадемстрой": {
-                id: "dev_3",
-                complexes: ["Европейский Берег", "Авиатор", "Пшеница", "Мылзавод", "Квартал на Декабристов", "Лебедевский", "Город-на-озере"],
-                address: "",
-                commonPhone: "",
-                opAddress: "",
-                category: "newbuild"
+            const saved = localStorage.getItem('contactsDatabase');
+            if (!saved) {
+                console.log('Нет данных в localStorage');
+                return false;
             }
-        },
-        contacts: [
-            { developer: "Расцветай", complex: "Эко-квартал на Кедровой", name: "Данил Швец", phone: "+7 961 873-63-10", role: "менеджер" },
-            { developer: "Расцветай", complex: "Эко-квартал на Кедровой", name: "Александра Гаммель", phone: "+7 961 848-39-56", role: "менеджер" },
-            { developer: "Расцветай", complex: "Расцветай на Красном", name: "Денис Бородин", phone: "+7 960 792-82-68", role: "менеджер" },
-            { developer: "VIRA (Вира)", complex: "CITATUM (Цитатум)", name: "Екатерина Рольгайзер", phone: "+7 913 723-00-37", role: "специалист по работе с партнерами" },
-            { developer: "Брусника. Сибакадемстрой", complex: "Авиатор", name: "Максим Попов", phone: "+7 999 463 3627", role: "менеджер" },
-            { developer: "Брусника. Сибакадемстрой", complex: "Авиатор", name: "Виктор Павлов", phone: "+7 913 627 5181", role: "менеджер" }
-        ]
-    };
-    saveData();
-}
-
-// ========== ОБНОВЛЕНИЕ ИНТЕРФЕЙСА ==========
-
-/**
- * Обновление статистики на панели
- */
-function updateStats() {
-    const developersCount = Object.keys(state.database.developers).length;
-    const complexesCount = Object.values(state.database.developers).reduce((sum, dev) => sum + dev.complexes.length, 0);
-    const contactsCount = state.database.contacts.length;
-    
-    const devCountEl = document.getElementById('developersCount');
-    const complexCountEl = document.getElementById('complexesCount');
-    const contactsCountEl = document.getElementById('contactsCount');
-    
-    if (devCountEl) devCountEl.textContent = developersCount;
-    if (complexCountEl) complexCountEl.textContent = complexesCount;
-    if (contactsCountEl) contactsCountEl.textContent = contactsCount;
-}
-
-/**
- * Заполнение выпадающих списков
- */
-function populateDatalists() {
-    const developersList = document.getElementById('developersList');
-    if (developersList) {
-        developersList.innerHTML = '';
-        Object.keys(state.database.developers).forEach(dev => {
-            const option = document.createElement('option');
-            option.value = dev;
-            developersList.appendChild(option);
-        });
+            
+            const db = JSON.parse(saved);
+            // Конвертируем из формата {developers, contacts} в плоскую таблицу
+            this.records = [];
+            
+            for (const [developer, devData] of Object.entries(db.developers || {})) {
+                for (const complex of devData.complexes || []) {
+                    // Добавляем запись с общим телефоном
+                    if (devData.commonPhone) {
+                        this.records.push({
+                            developer: developer,
+                            complex: complex,
+                            address: devData.address || '',
+                            opAddress: devData.opAddress || '',
+                            commonPhone: devData.commonPhone,
+                            manager: 'Общий телефон',
+                            managerPhone: '',
+                            role: 'менеджер',
+                            category: devData.category || 'newbuild'
+                        });
+                    }
+                    
+                    // Добавляем записи с менеджерами
+                    const complexContacts = (db.contacts || []).filter(c => 
+                        c.developer === developer && c.complex === complex
+                    );
+                    
+                    for (const contact of complexContacts) {
+                        this.records.push({
+                            developer: developer,
+                            complex: complex,
+                            address: devData.address || '',
+                            opAddress: devData.opAddress || '',
+                            commonPhone: devData.commonPhone || '',
+                            manager: contact.name,
+                            managerPhone: contact.phone,
+                            role: contact.role,
+                            category: devData.category || 'newbuild'
+                        });
+                    }
+                }
+            }
+            
+            // Если записей нет, пробуем загрузить демо
+            if (this.records.length === 0) {
+                this.loadDemoData();
+            }
+            
+            this.updateDevelopersSet();
+            console.log(`📀 Загружено ${this.records.length} записей из localStorage`);
+            return true;
+        } catch (e) {
+            console.error('Ошибка загрузки из localStorage:', e);
+            return false;
+        }
     }
-    
-    const complexesList = document.getElementById('complexesList');
-    if (complexesList) {
-        complexesList.innerHTML = '';
-        Object.values(state.database.developers).forEach(dev => {
-            dev.complexes.forEach(complex => {
-                const option = document.createElement('option');
-                option.value = complex;
-                complexesList.appendChild(option);
-            });
-        });
-    }
-}
 
-/**
- * Создание элемента менеджера для формы
- * @returns {HTMLElement} - DOM элемент менеджера
- */
-function createManagerItem() {
-    const div = document.createElement('div');
-    div.className = 'manager-item';
-    div.innerHTML = `
-        <input type="text" placeholder="Имя менеджера" class="manager-name">
-        <input type="text" placeholder="Телефон" class="manager-phone">
-        <select class="manager-role">
-            <option value="менеджер">Менеджер</option>
-            <option value="руководитель ОП">Руководитель ОП</option>
-            <option value="специалист по работе с партнерами">Специалист по работе с партнерами</option>
-        </select>
-        <button class="btn btn-danger remove-manager" style="padding: 8px 16px;">
-            <i class="fas fa-trash"></i>
-        </button>
-    `;
-    div.querySelector('.remove-manager').addEventListener('click', () => div.remove());
-    return div;
-}
-
-/**
- * Сброс формы добавления/редактирования
- */
-function resetForm() {
-    state.editMode = false;
-    state.editId = null;
-    
-    const formTitle = document.getElementById('formTitle');
-    const developerInput = document.getElementById('developerInput');
-    const complexInput = document.getElementById('complexInput');
-    const addressInput = document.getElementById('addressInput');
-    const opAddressInput = document.getElementById('opAddressInput');
-    const commonPhoneInput = document.getElementById('commonPhoneInput');
-    const formPanel = document.getElementById('formPanel');
-    const showFormBtn = document.getElementById('showFormBtn');
-    const managersContainer = document.getElementById('managersContainer');
-    
-    if (formTitle) formTitle.innerHTML = '<i class="fas fa-plus-circle"></i> Добавление контакта';
-    if (developerInput) developerInput.value = '';
-    if (complexInput) complexInput.value = '';
-    if (addressInput) addressInput.value = '';
-    if (opAddressInput) opAddressInput.value = '';
-    if (commonPhoneInput) commonPhoneInput.value = '';
-    
-    if (managersContainer) {
-        managersContainer.innerHTML = '';
-        managersContainer.appendChild(createManagerItem());
+    /**
+     * Загрузка демонстрационных данных
+     */
+    loadDemoData() {
+        this.records = [
+            { developer: "Расцветай", complex: "Эко-квартал на Кедровой", address: "ул. Кедровая 80/1а", opAddress: "", commonPhone: "+7 (383) 255-88-22", manager: "Данил Швец", managerPhone: "+7 961 873-63-10", role: "менеджер", category: "newbuild" },
+            { developer: "Расцветай", complex: "Эко-квартал на Кедровой", address: "ул. Кедровая 80/1а", opAddress: "", commonPhone: "+7 (383) 255-88-22", manager: "Александра Гаммель", managerPhone: "+7 961 848-39-56", role: "менеджер", category: "newbuild" },
+            { developer: "Расцветай", complex: "Расцветай на Красном", address: "ул. Красный проспект 165", opAddress: "", commonPhone: "", manager: "Денис Бородин", managerPhone: "+7 960 792-82-68", role: "менеджер", category: "newbuild" },
+            { developer: "VIRA (Вира)", complex: "CITATUM (Цитатум)", address: "", opAddress: "ул.Фрунзе 63", commonPhone: "+7 (383) 271-22-22", manager: "Екатерина Рольгайзер", managerPhone: "+7 913 723-00-37", role: "специалист по работе с партнерами", category: "newbuild" },
+            { developer: "Брусника. Сибакадемстрой", complex: "Авиатор", address: "", opAddress: "", commonPhone: "", manager: "Максим Попов", managerPhone: "+7 999 463 3627", role: "менеджер", category: "newbuild" }
+        ];
+        this.updateDevelopersSet();
+        this.saveToLocalStorage();
+        console.log('📦 Загружены демо-данные');
     }
-    
-    if (formPanel) formPanel.classList.remove('active');
-    if (showFormBtn) showFormBtn.style.display = 'inline-flex';
-}
 
-// ========== БИЗНЕС-ЛОГИКА ==========
+    /**
+     * Обновление списка уникальных застройщиков
+     */
+    updateDevelopersSet() {
+        this.developersSet.clear();
+        for (const record of this.records) {
+            if (record.developer) {
+                this.developersSet.add(record.developer);
+            }
+        }
+    }
 
-/**
- * Добавление или получение застройщика
- * @param {string} developerName - Название застройщика
- * @returns {Object} - Объект застройщика
- */
-function addOrGetDeveloper(developerName) {
-    if (!state.database.developers[developerName]) {
-        state.database.developers[developerName] = {
-            id: 'dev_' + Date.now(),
-            complexes: [],
-            address: '',
-            commonPhone: '',
-            opAddress: '',
-            category: 'newbuild'
-        };
-        saveData();
-        showToast(`✅ Добавлен новый застройщик: ${developerName}`);
-    }
-    return state.database.developers[developerName];
-}
-
-/**
- * Добавление ЖК к застройщику
- * @param {string} developerName - Название застройщика
- * @param {string} complexName - Название ЖК
- * @returns {boolean} - Успех операции
- */
-function addComplexToDeveloper(developerName, complexName) {
-    const developer = state.database.developers[developerName];
-    if (developer && !developer.complexes.includes(complexName)) {
-        developer.complexes.push(complexName);
-        saveData();
-        showToast(`✅ Добавлен новый ЖК: ${complexName} (${developerName})`);
-        return true;
-    }
-    return false;
-}
-
-/**
- * Сохранение контакта из формы
- */
-function saveContact() {
-    const developerInput = document.getElementById('developerInput');
-    const complexInput = document.getElementById('complexInput');
-    const addressInput = document.getElementById('addressInput');
-    const opAddressInput = document.getElementById('opAddressInput');
-    const commonPhoneInput = document.getElementById('commonPhoneInput');
-    
-    const developer = developerInput?.value.trim() || '';
-    const complex = complexInput?.value.trim() || '';
-    const address = addressInput?.value.trim() || '';
-    const opAddress = opAddressInput?.value.trim() || '';
-    const commonPhone = formatPhone(commonPhoneInput?.value.trim() || '');
-    
-    if (!developer) {
-        showToast('❌ Введите название застройщика', true);
-        return;
-    }
-    if (!complex) {
-        showToast('❌ Введите название ЖК', true);
-        return;
-    }
-    
-    // Добавляем застройщика и ЖК в базу
-    addOrGetDeveloper(developer);
-    addComplexToDeveloper(developer, complex);
-    
-    const devData = state.database.developers[developer];
-    
-    // Обновляем доп. информацию о застройщике
-    if (address && devData.address !== address) devData.address = address;
-    if (opAddress && devData.opAddress !== opAddress) devData.opAddress = opAddress;
-    if (commonPhone && devData.commonPhone !== commonPhone) devData.commonPhone = commonPhone;
-    
-    // Сохраняем менеджеров
-    const managerItems = document.querySelectorAll('.manager-item');
-    let savedCount = 0;
-    
-    managerItems.forEach(item => {
-        const name = item.querySelector('.manager-name')?.value.trim() || '';
-        const phone = formatPhone(item.querySelector('.manager-phone')?.value.trim() || '');
-        const role = item.querySelector('.manager-role')?.value || 'менеджер';
+    /**
+     * Сохранение данных в localStorage (в формате для каталога)
+     */
+    saveToLocalStorage() {
+        const developers = {};
+        const contacts = [];
         
-        if (name && phone) {
-            const exists = state.database.contacts.some(c => 
-                c.developer === developer && 
-                c.complex === complex && 
-                c.name === name
+        for (const record of this.records) {
+            const devName = record.developer;
+            const complexName = record.complex;
+            
+            // Создаем застройщика если нет
+            if (!developers[devName]) {
+                developers[devName] = {
+                    id: 'dev_' + Date.now() + '_' + Math.random(),
+                    complexes: [],
+                    address: record.address || '',
+                    opAddress: record.opAddress || '',
+                    commonPhone: record.commonPhone || '',
+                    category: record.category || 'newbuild'
+                };
+            }
+            
+            const devData = developers[devName];
+            
+            // Добавляем ЖК если нет
+            if (!devData.complexes.includes(complexName)) {
+                devData.complexes.push(complexName);
+            }
+            
+            // Обновляем адреса и телефоны
+            if (record.address && !devData.address) devData.address = record.address;
+            if (record.opAddress && !devData.opAddress) devData.opAddress = record.opAddress;
+            if (record.commonPhone && !devData.commonPhone) devData.commonPhone = record.commonPhone;
+            
+            // Добавляем контакт (если это не общий телефон)
+            if (record.manager && record.manager !== 'Общий телефон' && record.managerPhone) {
+                contacts.push({
+                    developer: devName,
+                    complex: complexName,
+                    name: record.manager,
+                    phone: record.managerPhone,
+                    role: record.role || 'менеджер'
+                });
+            }
+        }
+        
+        const database = { developers, contacts };
+        localStorage.setItem('contactsDatabase', JSON.stringify(database));
+        localStorage.setItem('lastDataUpdate', new Date().toISOString());
+        console.log('💾 Данные сохранены в localStorage');
+    }
+
+    /**
+     * Применение фильтров
+     */
+    applyFilters() {
+        let filtered = [...this.records];
+        
+        // Поиск по всем полям
+        if (this.searchQuery) {
+            const query = this.searchQuery.toLowerCase();
+            filtered = filtered.filter(record => {
+                return Object.values(record).some(value => 
+                    String(value).toLowerCase().includes(query)
+                );
+            });
+        }
+        
+        // Фильтр по застройщику
+        if (this.filterDeveloper) {
+            filtered = filtered.filter(record => 
+                record.developer === this.filterDeveloper
             );
-            
-            if (!exists) {
-                state.database.contacts.push({ developer, complex, name, phone, role });
-                savedCount++;
-            }
         }
-    });
-    
-    saveData();
-    showToast(`✅ Сохранено: ${savedCount} контакт(ов) для ${complex}`);
-    resetForm();
-    renderTable();
-}
-
-/**
- * Редактирование контакта
- * @param {number} index - Индекс контакта в массиве
- */
-function editContact(index) {
-    const contact = state.database.contacts[index];
-    if (!contact) return;
-    
-    state.editMode = true;
-    state.editId = index;
-    
-    const formTitle = document.getElementById('formTitle');
-    const developerInput = document.getElementById('developerInput');
-    const complexInput = document.getElementById('complexInput');
-    const addressInput = document.getElementById('addressInput');
-    const opAddressInput = document.getElementById('opAddressInput');
-    const commonPhoneInput = document.getElementById('commonPhoneInput');
-    const managersContainer = document.getElementById('managersContainer');
-    const formPanel = document.getElementById('formPanel');
-    const showFormBtn = document.getElementById('showFormBtn');
-    
-    if (formTitle) formTitle.innerHTML = '<i class="fas fa-edit"></i> Редактирование контакта';
-    if (developerInput) developerInput.value = contact.developer;
-    if (complexInput) complexInput.value = contact.complex;
-    
-    const dev = state.database.developers[contact.developer];
-    if (dev) {
-        if (addressInput) addressInput.value = dev.address || '';
-        if (opAddressInput) opAddressInput.value = dev.opAddress || '';
-        if (commonPhoneInput) commonPhoneInput.value = dev.commonPhone || '';
-    }
-    
-    if (managersContainer) {
-        managersContainer.innerHTML = '';
-        const managerItem = createManagerItem();
-        managerItem.querySelector('.manager-name').value = contact.name;
-        managerItem.querySelector('.manager-phone').value = contact.phone;
-        managerItem.querySelector('.manager-role').value = contact.role;
-        managersContainer.appendChild(managerItem);
-    }
-    
-    if (formPanel) formPanel.classList.add('active');
-    if (showFormBtn) showFormBtn.style.display = 'none';
-}
-
-/**
- * Удаление контакта
- * @param {number} index - Индекс контакта в массиве
- */
-function deleteContact(index) {
-    if (confirm('Удалить этот контакт?')) {
-        state.database.contacts.splice(index, 1);
-        saveData();
-        renderTable();
-        showToast('🗑️ Контакт удален');
-    }
-}
-
-// ========== ОТОБРАЖЕНИЕ ТАБЛИЦЫ ==========
-
-/**
- * Отрисовка таблицы с данными
- */
-function renderTable() {
-    const tbody = document.getElementById('tableBody');
-    const searchInput = document.getElementById('searchInput');
-    const filterTypeSelect = document.getElementById('filterType');
-    
-    if (!tbody) return;
-    
-    const searchTerm = searchInput?.value.toLowerCase() || '';
-    const filterType = filterTypeSelect?.value || 'all';
-    
-    let filteredContacts = [...state.database.contacts];
-    
-    if (searchTerm) {
-        filteredContacts = filteredContacts.filter(c => 
-            c.developer.toLowerCase().includes(searchTerm) ||
-            c.complex.toLowerCase().includes(searchTerm) ||
-            c.name.toLowerCase().includes(searchTerm) ||
-            c.phone.includes(searchTerm)
-        );
-    }
-    
-    if (filterType === 'developer') {
-        const uniqueDevs = [...new Set(filteredContacts.map(c => c.developer))];
-        tbody.innerHTML = uniqueDevs.map(dev => `
-            <tr>
-                <td>${escapeHtml(dev)}</td>
-                <td colspan="5">${state.database.developers[dev]?.complexes.join(', ') || '-'}</td>
-            </tr>
-        `).join('');
-        return;
-    }
-    
-    if (filterType === 'complex') {
-        const uniqueComplexes = [...new Set(filteredContacts.map(c => `${c.developer}|${c.complex}`))];
-        tbody.innerHTML = uniqueComplexes.map(key => {
-            const [dev, comp] = key.split('|');
-            return `
-                <tr>
-                    <td>${escapeHtml(dev)}</td>
-                    <td colspan="5">${escapeHtml(comp)}</td>
-                </tr>
-            `;
-        }).join('');
-        return;
-    }
-    
-    if (filteredContacts.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Нет данных</td></tr>';
-        return;
-    }
-    
-    tbody.innerHTML = filteredContacts.map((contact) => {
-        const devData = state.database.developers[contact.developer];
-        const currentIndex = state.database.contacts.indexOf(contact);
-        return `
-            <tr>
-                <td>${escapeHtml(contact.developer)}</td>
-                <td>${escapeHtml(contact.complex)}</td>
-                <td>${escapeHtml(devData?.address || '-')}</td>
-                <td>${escapeHtml(devData?.commonPhone || '-')}</td>
-                <td>${escapeHtml(contact.name)}<br><small>${escapeHtml(contact.phone)}</small><br><span style="color:#a78bfa">${escapeHtml(contact.role)}</span></td>
-                <td class="action-btns">
-                    <button class="btn btn-secondary" onclick="window.editContact(${currentIndex})" style="padding: 6px 12px;">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn btn-danger" onclick="window.deleteContact(${currentIndex})" style="padding: 6px 12px;">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </td>
-            </tr>
-        `;
-    }).join('');
-}
-
-// ========== ЭКСПОРТ/ИМПОРТ CSV ==========
-
-/**
- * Экспорт данных в CSV файл
- */
-function exportToCSV() {
-    let csv = "Застройщик,Название ЖК,Адрес ЖК,Адрес ОП,Общий телефон,Менеджер,Телефон менеджера,Должность,Категория\n";
-    
-    for (const [developer, devData] of Object.entries(state.database.developers)) {
-        for (const complex of devData.complexes) {
-            if (devData.commonPhone) {
-                csv += `"${developer}","${complex}","${devData.address || ''}","${devData.opAddress || ''}","${devData.commonPhone}",Общий телефон,,менеджер,${devData.category || 'newbuild'}\n`;
-            }
-            
-            const complexContacts = state.database.contacts.filter(c => c.developer === developer && c.complex === complex);
-            for (const contact of complexContacts) {
-                csv += `"${developer}","${complex}","${devData.address || ''}","${devData.opAddress || ''}","${devData.commonPhone || ''}","${contact.name}","${contact.phone}","${contact.role}",${devData.category || 'newbuild'}\n`;
-            }
+        
+        // Фильтр по категории
+        if (this.filterCategory) {
+            filtered = filtered.filter(record => 
+                record.category === this.filterCategory
+            );
         }
+        
+        this.filteredRecords = filtered;
+        this.currentPage = 1;
+        return this.filteredRecords;
     }
-    
-    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.href = url;
-    link.setAttribute('download', 'contacts_export.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    showToast('📥 CSV файл скачан');
-}
 
-/**
- * Импорт данных из CSV
- * @param {string} csvContent - Содержимое CSV файла
- */
-function importFromCSV(csvContent) {
-    try {
-        const lines = csvContent.split('\n');
+    /**
+     * Получение записей для текущей страницы
+     */
+    getCurrentPageRecords() {
+        const start = (this.currentPage - 1) * this.perPage;
+        const end = start + this.perPage;
+        return this.filteredRecords.slice(start, end);
+    }
+
+    /**
+     * Получение общего количества страниц
+     */
+    getTotalPages() {
+        return Math.ceil(this.filteredRecords.length / this.perPage);
+    }
+
+    /**
+     * Добавление новой записи
+     */
+    addRecord(record) {
+        // Форматируем телефоны
+        const newRecord = {
+            ...record,
+            commonPhone: formatPhone(record.commonPhone),
+            managerPhone: formatPhone(record.managerPhone)
+        };
+        
+        this.records.push(newRecord);
+        this.updateDevelopersSet();
+        this.saveToLocalStorage();
+        this.applyFilters();
+        return newRecord;
+    }
+
+    /**
+     * Обновление существующей записи
+     */
+    updateRecord(index, updatedRecord) {
+        if (index >= 0 && index < this.records.length) {
+            this.records[index] = {
+                ...updatedRecord,
+                commonPhone: formatPhone(updatedRecord.commonPhone),
+                managerPhone: formatPhone(updatedRecord.managerPhone)
+            };
+            this.updateDevelopersSet();
+            this.saveToLocalStorage();
+            this.applyFilters();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Удаление записи
+     */
+    deleteRecord(index) {
+        if (index >= 0 && index < this.records.length) {
+            this.records.splice(index, 1);
+            this.updateDevelopersSet();
+            this.saveToLocalStorage();
+            this.applyFilters();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Импорт из CSV
+     */
+    importFromCSV(csvText) {
+        const lines = csvText.split('\n');
+        if (lines.length === 0) return { imported: 0, errors: 0 };
+        
         const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
         
-        const colIndex = {
-            developer: headers.findIndex(h => h.includes('Застройщик')),
-            complex: headers.findIndex(h => h.includes('Название ЖК') || h.includes('ЖК')),
-            address: headers.findIndex(h => h.includes('Адрес ЖК')),
-            opAddress: headers.findIndex(h => h.includes('Адрес ОП')),
-            commonPhone: headers.findIndex(h => h.includes('Общий телефон')),
-            manager: headers.findIndex(h => h.includes('Менеджер')),
-            managerPhone: headers.findIndex(h => h.includes('Телефон менеджера')),
-            role: headers.findIndex(h => h.includes('Должность')),
-            category: headers.findIndex(h => h.includes('Категория'))
-        };
-        
-        const newDatabase = { developers: {}, contacts: [] };
+        const newRecords = [];
         let importedCount = 0;
-        let skippedCount = 0;
+        let errorCount = 0;
         
         for (let i = 1; i < lines.length; i++) {
             const line = lines[i].trim();
             if (!line) continue;
             
+            // Парсинг CSV с учетом кавычек
             const row = [];
             let inQuotes = false;
             let current = '';
@@ -567,170 +403,708 @@ function importFromCSV(csvContent) {
             }
             row.push(current.trim());
             
-            let developer = row[colIndex.developer]?.replace(/^"|"$/g, '').trim();
-            let complex = row[colIndex.complex]?.replace(/^"|"$/g, '').trim();
-            const address = row[colIndex.address]?.replace(/^"|"$/g, '').trim() || '';
-            const opAddress = row[colIndex.opAddress]?.replace(/^"|""$/g, '').trim() || '';
-            let commonPhone = row[colIndex.commonPhone]?.replace(/^"|"$/g, '').trim() || '';
-            let manager = row[colIndex.manager]?.replace(/^"|"$/g, '').trim();
-            let managerPhone = row[colIndex.managerPhone]?.replace(/^"|"$/g, '').trim();
-            const role = row[colIndex.role]?.replace(/^"|"$/g, '').trim() || 'менеджер';
-            const category = row[colIndex.category]?.replace(/^"|"$/g, '').trim() || 'newbuild';
+            // Извлекаем значения
+            const developer = row[0]?.replace(/^"|"$/g, '')?.trim();
+            const complex = row[1]?.replace(/^"|"$/g, '')?.trim();
+            const address = row[2]?.replace(/^"|"$/g, '')?.trim() || '';
+            const opAddress = row[3]?.replace(/^"|"$/g, '')?.trim() || '';
+            const commonPhone = row[4]?.replace(/^"|"$/g, '')?.trim() || '';
+            const manager = row[5]?.replace(/^"|"$/g, '')?.trim();
+            const managerPhone = row[6]?.replace(/^"|"$/g, '')?.trim();
+            const role = row[7]?.replace(/^"|"$/g, '')?.trim() || 'менеджер';
+            const category = row[8]?.replace(/^"|"$/g, '')?.trim() || 'newbuild';
             
-            if (!developer || !complex) continue;
-            
-            developer = developer.replace(/Сайт|ТГ-канал|Realt.one/g, '').replace(/\s{2,}/g, ' ').trim();
-            complex = complex.replace(/Сайт|ТГ-канал|Realt.one/g, '').replace(/\s{2,}/g, ' ').trim();
-            
-            if (commonPhone && commonPhone !== 'Общий телефон' && commonPhone !== 'Телефон ОП') {
-                commonPhone = formatPhone(commonPhone);
-            } else {
-                commonPhone = '';
+            // Пропускаем строки без застройщика или ЖК
+            if (!developer || !complex) {
+                errorCount++;
+                continue;
             }
             
-            if (managerPhone && managerPhone !== 'Общий телефон' && managerPhone !== 'Телефон ОП') {
-                managerPhone = formatPhone(managerPhone);
-            }
+            // Очищаем названия
+            const cleanDeveloper = cleanName(developer);
+            const cleanComplex = cleanName(complex);
             
-            if (!newDatabase.developers[developer]) {
-                newDatabase.developers[developer] = {
-                    id: 'dev_' + Date.now() + '_' + Math.random(),
-                    complexes: [],
-                    address: address,
-                    opAddress: opAddress,
-                    commonPhone: commonPhone,
-                    category: category
-                };
-            }
+            // Создаем запись
+            const record = {
+                developer: cleanDeveloper,
+                complex: cleanComplex,
+                address: address,
+                opAddress: opAddress,
+                commonPhone: commonPhone,
+                manager: manager || '',
+                managerPhone: managerPhone || '',
+                role: role,
+                category: category
+            };
             
-            const devData = newDatabase.developers[developer];
-            
-            if (!devData.complexes.includes(complex)) {
-                devData.complexes.push(complex);
-            }
-            
-            if (address && !devData.address) devData.address = address;
-            if (opAddress && !devData.opAddress) devData.opAddress = opAddress;
-            if (commonPhone && !devData.commonPhone) devData.commonPhone = commonPhone;
-            
-            if (manager && manager !== 'Общий телефон' && manager !== 'Телефон ОП' && managerPhone) {
-                const exists = newDatabase.contacts.some(c => 
-                    c.developer === developer && 
-                    c.complex === complex && 
-                    c.name === manager
-                );
-                
-                if (!exists) {
-                    newDatabase.contacts.push({
-                        developer: developer,
-                        complex: complex,
-                        name: manager,
-                        phone: managerPhone,
-                        role: role
-                    });
-                    importedCount++;
-                } else {
-                    skippedCount++;
-                }
-            }
+            newRecords.push(record);
+            importedCount++;
         }
         
-        state.database = newDatabase;
-        saveData();
-        updateStats();
-        renderTable();
-        populateDatalists();
+        if (newRecords.length > 0) {
+            this.records = newRecords;
+            this.updateDevelopersSet();
+            this.saveToLocalStorage();
+            this.applyFilters();
+        }
         
-        showToast(`✅ Импорт завершен! Добавлено: ${importedCount} контактов. Пропущено дублей: ${skippedCount}`);
+        return { imported: importedCount, errors: errorCount };
+    }
+
+    /**
+     * Экспорт в CSV
+     */
+    exportToCSV() {
+        const headers = ['Застройщик', 'Название ЖК', 'Адрес ЖК', 'Адрес ОП', 'Общий телефон', 'Менеджер', 'Телефон менеджера', 'Должность', 'Категория'];
+        const rows = [headers];
         
-    } catch (err) {
-        console.error('Ошибка импорта:', err);
-        showToast('❌ Ошибка при импорте CSV. Проверьте формат файла.', true);
+        for (const record of this.records) {
+            rows.push([
+                `"${record.developer || ''}"`,
+                `"${record.complex || ''}"`,
+                `"${record.address || ''}"`,
+                `"${record.opAddress || ''}"`,
+                `"${record.commonPhone || ''}"`,
+                `"${record.manager || ''}"`,
+                `"${record.managerPhone || ''}"`,
+                `"${record.role || 'менеджер'}"`,
+                `"${record.category || 'newbuild'}"`
+            ]);
+        }
+        
+        return rows.map(row => row.join(',')).join('\n');
+    }
+
+    /**
+     * Получение статистики
+     */
+    getStats() {
+        const uniqueDevelopers = new Set(this.records.map(r => r.developer));
+        const uniqueComplexes = new Set(this.records.map(r => `${r.developer}|${r.complex}`));
+        const managersCount = this.records.filter(r => r.manager && r.manager !== 'Общий телефон').length;
+        
+        return {
+            total: this.records.length,
+            developers: uniqueDevelopers.size,
+            complexes: uniqueComplexes.size,
+            managers: managersCount
+        };
     }
 }
 
-/**
- * Настройка импорта CSV
- */
-function setupImport() {
-    const importBtn = document.getElementById('importBtn');
-    const importFileInput = document.getElementById('importFileInput');
-    
-    if (!importBtn) return;
-    
-    importBtn.addEventListener('click', () => {
-        importFileInput?.click();
-    });
-    
-    if (importFileInput) {
-        importFileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+// ========================================
+// ОСНОВНОЙ КЛАСС АДМИН-ПАНЕЛИ
+// ========================================
+
+class AdminPanel {
+    constructor() {
+        this.dataStore = new DataStore();
+        this.currentEditIndex = null;  // Индекс редактируемой записи в оригинальном массиве
+        this.editingCell = null;        // Ячейка в режиме редактирования
+    }
+
+    /**
+     * Инициализация приложения
+     */
+    async init() {
+        // Загружаем данные
+        this.dataStore.loadFromLocalStorage();
+        this.dataStore.applyFilters();
+        
+        // Настраиваем UI
+        this.populateDeveloperFilter();
+        this.populateDeveloperDatalist();
+        this.renderTable();
+        this.updateStats();
+        this.setupEventListeners();
+        
+        console.log('✅ Админ-панель инициализирована');
+    }
+
+    /**
+     * Заполнение фильтра застройщиков
+     */
+    populateDeveloperFilter() {
+        const select = document.getElementById('filterDeveloper');
+        if (!select) return;
+        
+        select.innerHTML = '<option value="">Все застройщики</option>';
+        const developers = Array.from(this.dataStore.developersSet).sort();
+        
+        for (const dev of developers) {
+            const option = document.createElement('option');
+            option.value = dev;
+            option.textContent = dev;
+            select.appendChild(option);
+        }
+    }
+
+    /**
+     * Заполнение datalist застройщиков для формы
+     */
+    populateDeveloperDatalist() {
+        const datalist = document.getElementById('developersDatalist');
+        if (!datalist) return;
+        
+        datalist.innerHTML = '';
+        const developers = Array.from(this.dataStore.developersSet).sort();
+        
+        for (const dev of developers) {
+            const option = document.createElement('option');
+            option.value = dev;
+            datalist.appendChild(option);
+        }
+    }
+
+    /**
+     * Обновление статистики
+     */
+    updateStats() {
+        const stats = this.dataStore.getStats();
+        
+        const totalRecordsEl = document.getElementById('totalRecords');
+        const totalDevelopersEl = document.getElementById('totalDevelopers');
+        const totalComplexesEl = document.getElementById('totalComplexes');
+        const totalManagersEl = document.getElementById('totalManagers');
+        
+        if (totalRecordsEl) totalRecordsEl.textContent = stats.total;
+        if (totalDevelopersEl) totalDevelopersEl.textContent = stats.developers;
+        if (totalComplexesEl) totalComplexesEl.textContent = stats.complexes;
+        if (totalManagersEl) totalManagersEl.textContent = stats.managers;
+    }
+
+    /**
+     * Отрисовка таблицы
+     */
+    renderTable() {
+        const tbody = document.getElementById('tableBody');
+        if (!tbody) return;
+        
+        const records = this.dataStore.getCurrentPageRecords();
+        const startIndex = (this.dataStore.currentPage - 1) * this.dataStore.perPage;
+        
+        if (records.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 40px;">📭 Нет данных</td></tr>';
+            this.updatePaginationButtons();
+            return;
+        }
+        
+        tbody.innerHTML = records.map((record, idx) => {
+            const globalIndex = startIndex + idx;
+            const categoryIcon = record.category === 'suburban' ? '🏡' : '🏢';
+            const categoryText = record.category === 'suburban' ? 'Загородная' : 'Новостройка';
             
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                importFromCSV(event.target.result);
-            };
-            reader.readAsText(file, 'UTF-8');
-            importFileInput.value = '';
+            return `
+                <tr data-index="${globalIndex}">
+                    <td class="editable" data-field="developer">${escapeHtml(record.developer)}</td>
+                    <td class="editable" data-field="complex">${escapeHtml(record.complex)}</td>
+                    <td class="editable" data-field="address">${escapeHtml(record.address) || '-'}</td>
+                    <td class="editable" data-field="opAddress">${escapeHtml(record.opAddress) || '-'}</td>
+                    <td class="editable" data-field="commonPhone">${escapeHtml(record.commonPhone) || '-'}</td>
+                    <td class="editable" data-field="manager">${escapeHtml(record.manager) || '-'}</td>
+                    <td class="editable" data-field="managerPhone">${escapeHtml(record.managerPhone) || '-'}</td>
+                    <td class="editable" data-field="role">${escapeHtml(record.role)}</td>
+                    <td class="editable" data-field="category">${categoryIcon} ${categoryText}</td>
+                    <td class="action-cell">
+                        <button class="edit-row-btn" title="Редактировать"><i class="fas fa-edit"></i></button>
+                        <button class="delete-row-btn" title="Удалить"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        
+        this.updatePaginationButtons();
+        this.updatePageInfo();
+        this.attachTableEventListeners();
+    }
+
+    /**
+     * Прикрепление обработчиков к таблице
+     */
+    attachTableEventListeners() {
+        // Редактирование ячеек
+        const editableCells = document.querySelectorAll('.editable');
+        editableCells.forEach(cell => {
+            cell.removeEventListener('click', this.handleCellClick);
+            cell.addEventListener('click', this.handleCellClick.bind(this));
         });
+        
+        // Кнопки редактирования строки
+        const editButtons = document.querySelectorAll('.edit-row-btn');
+        editButtons.forEach(btn => {
+            btn.removeEventListener('click', this.handleEditRow);
+            btn.addEventListener('click', this.handleEditRow.bind(this));
+        });
+        
+        // Кнопки удаления
+        const deleteButtons = document.querySelectorAll('.delete-row-btn');
+        deleteButtons.forEach(btn => {
+            btn.removeEventListener('click', this.handleDeleteRow);
+            btn.addEventListener('click', this.handleDeleteRow.bind(this));
+        });
+    }
+
+    /**
+     * Обработчик клика по ячейке (inline-редактирование)
+     */
+    handleCellClick(event) {
+        const cell = event.currentTarget;
+        const row = cell.closest('tr');
+        const globalIndex = parseInt(row.dataset.index);
+        const field = cell.dataset.field;
+        const currentValue = cell.textContent.trim() === '-' ? '' : cell.textContent.trim();
+        
+        // Сохраняем текущую ячейку для отмены
+        this.editingCell = { cell, globalIndex, field, oldValue: currentValue };
+        
+        // Создаем input или select
+        let input;
+        if (field === 'category') {
+            input = document.createElement('select');
+            input.innerHTML = `
+                <option value="newbuild" ${currentValue.includes('Новостройка') ? 'selected' : ''}>🏢 Новостройка</option>
+                <option value="suburban" ${currentValue.includes('Загородная') ? 'selected' : ''}>🏡 Загородная</option>
+            `;
+        } else if (field === 'role') {
+            input = document.createElement('select');
+            input.innerHTML = `
+                <option value="менеджер" ${currentValue === 'менеджер' ? 'selected' : ''}>Менеджер</option>
+                <option value="руководитель ОП" ${currentValue === 'руководитель ОП' ? 'selected' : ''}>Руководитель ОП</option>
+                <option value="специалист по работе с партнерами" ${currentValue === 'специалист по работе с партнерами' ? 'selected' : ''}>Специалист по работе с партнерами</option>
+            `;
+        } else {
+            input = document.createElement('input');
+            input.type = 'text';
+            input.value = currentValue === '-' ? '' : currentValue;
+        }
+        
+        cell.classList.add('editing');
+        cell.textContent = '';
+        cell.appendChild(input);
+        input.focus();
+        
+        const saveEdit = () => {
+            const newValue = input.value;
+            cell.classList.remove('editing');
+            
+            // Обновляем данные
+            const record = this.dataStore.records[globalIndex];
+            if (record) {
+                let saveValue = newValue;
+                if (field === 'category') {
+                    saveValue = newValue;
+                }
+                record[field] = saveValue;
+                this.dataStore.saveToLocalStorage();
+                this.dataStore.applyFilters();
+                this.renderTable();
+                this.updateStats();
+                this.populateDeveloperFilter();
+                this.populateDeveloperDatalist();
+                showToast(`✅ Поле "${field}" обновлено`);
+            }
+        };
+        
+        const cancelEdit = () => {
+            cell.classList.remove('editing');
+            this.renderTable();
+        };
+        
+        input.addEventListener('blur', saveEdit);
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') saveEdit();
+            if (e.key === 'Escape') cancelEdit();
+        });
+    }
+
+    /**
+     * Обработчик редактирования строки (загрузка в форму)
+     */
+    handleEditRow(event) {
+        const btn = event.currentTarget;
+        const row = btn.closest('tr');
+        const globalIndex = parseInt(row.dataset.index);
+        const record = this.dataStore.records[globalIndex];
+        
+        if (record) {
+            this.currentEditIndex = globalIndex;
+            this.loadRecordToForm(record);
+            
+            const formTitle = document.getElementById('formTitle');
+            if (formTitle) {
+                formTitle.innerHTML = '<i class="fas fa-edit"></i> Редактирование записи';
+            }
+            
+            // Прокручиваем к форме
+            document.getElementById('formSection')?.scrollIntoView({ behavior: 'smooth' });
+        }
+    }
+
+    /**
+     * Обработчик удаления строки
+     */
+    handleDeleteRow(event) {
+        const btn = event.currentTarget;
+        const row = btn.closest('tr');
+        const globalIndex = parseInt(row.dataset.index);
+        
+        if (confirm('🗑️ Удалить эту запись?')) {
+            this.dataStore.deleteRecord(globalIndex);
+            this.renderTable();
+            this.updateStats();
+            this.populateDeveloperFilter();
+            this.populateDeveloperDatalist();
+            showToast('✅ Запись удалена');
+        }
+    }
+
+    /**
+     * Загрузка записи в форму
+     */
+    loadRecordToForm(record) {
+        const developerInput = document.getElementById('formDeveloper');
+        const complexInput = document.getElementById('formComplex');
+        const addressInput = document.getElementById('formAddress');
+        const opAddressInput = document.getElementById('formOpAddress');
+        const commonPhoneInput = document.getElementById('formCommonPhone');
+        const managerInput = document.getElementById('formManager');
+        const managerPhoneInput = document.getElementById('formManagerPhone');
+        const roleSelect = document.getElementById('formRole');
+        const categorySelect = document.getElementById('formCategory');
+        
+        if (developerInput) developerInput.value = record.developer || '';
+        if (complexInput) complexInput.value = record.complex || '';
+        if (addressInput) addressInput.value = record.address || '';
+        if (opAddressInput) opAddressInput.value = record.opAddress || '';
+        if (commonPhoneInput) commonPhoneInput.value = record.commonPhone || '';
+        if (managerInput) managerInput.value = record.manager || '';
+        if (managerPhoneInput) managerPhoneInput.value = record.managerPhone || '';
+        if (roleSelect) roleSelect.value = record.role || 'менеджер';
+        if (categorySelect) categorySelect.value = record.category || 'newbuild';
+    }
+
+    /**
+     * Получение данных из формы
+     */
+    getFormData() {
+        const developerInput = document.getElementById('formDeveloper');
+        const complexInput = document.getElementById('formComplex');
+        const addressInput = document.getElementById('formAddress');
+        const opAddressInput = document.getElementById('formOpAddress');
+        const commonPhoneInput = document.getElementById('formCommonPhone');
+        const managerInput = document.getElementById('formManager');
+        const managerPhoneInput = document.getElementById('formManagerPhone');
+        const roleSelect = document.getElementById('formRole');
+        const categorySelect = document.getElementById('formCategory');
+        
+        return {
+            developer: developerInput?.value.trim() || '',
+            complex: complexInput?.value.trim() || '',
+            address: addressInput?.value.trim() || '',
+            opAddress: opAddressInput?.value.trim() || '',
+            commonPhone: commonPhoneInput?.value.trim() || '',
+            manager: managerInput?.value.trim() || '',
+            managerPhone: managerPhoneInput?.value.trim() || '',
+            role: roleSelect?.value || 'менеджер',
+            category: categorySelect?.value || 'newbuild'
+        };
+    }
+
+    /**
+     * Очистка формы
+     */
+    clearForm() {
+        const fields = ['formDeveloper', 'formComplex', 'formAddress', 'formOpAddress', 'formCommonPhone', 'formManager', 'formManagerPhone'];
+        fields.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        
+        const roleSelect = document.getElementById('formRole');
+        if (roleSelect) roleSelect.value = 'менеджер';
+        
+        const categorySelect = document.getElementById('formCategory');
+        if (categorySelect) categorySelect.value = 'newbuild';
+        
+        this.currentEditIndex = null;
+        
+        const formTitle = document.getElementById('formTitle');
+        if (formTitle) {
+            formTitle.innerHTML = '<i class="fas fa-plus-circle"></i> Новая запись';
+        }
+    }
+
+    /**
+     * Сохранение записи из формы
+     */
+    saveForm() {
+        const formData = this.getFormData();
+        
+        // Валидация
+        if (!formData.developer) {
+            showToast('❌ Введите название застройщика', true);
+            document.getElementById('formDeveloper')?.focus();
+            return;
+        }
+        
+        if (!formData.complex) {
+            showToast('❌ Введите название ЖК', true);
+            document.getElementById('formComplex')?.focus();
+            return;
+        }
+        
+        // Форматируем телефоны
+        formData.commonPhone = formatPhone(formData.commonPhone);
+        formData.managerPhone = formatPhone(formData.managerPhone);
+        
+        if (this.currentEditIndex !== null) {
+            // Обновление существующей записи
+            this.dataStore.updateRecord(this.currentEditIndex, formData);
+            showToast('✅ Запись обновлена');
+        } else {
+            // Добавление новой записи
+            this.dataStore.addRecord(formData);
+            showToast('✅ Новая запись добавлена');
+        }
+        
+        this.clearForm();
+        this.renderTable();
+        this.updateStats();
+        this.populateDeveloperFilter();
+        this.populateDeveloperDatalist();
+    }
+
+    /**
+     * Обновление информации о странице
+     */
+    updatePageInfo() {
+        const pageInfo = document.getElementById('pageInfo');
+        if (pageInfo) {
+            pageInfo.textContent = `Страница ${this.dataStore.currentPage} из ${this.dataStore.getTotalPages() || 1}`;
+        }
+    }
+
+    /**
+     * Обновление состояния кнопок пагинации
+     */
+    updatePaginationButtons() {
+        const firstBtn = document.getElementById('firstPageBtn');
+        const prevBtn = document.getElementById('prevPageBtn');
+        const nextBtn = document.getElementById('nextPageBtn');
+        const lastBtn = document.getElementById('lastPageBtn');
+        
+        const currentPage = this.dataStore.currentPage;
+        const totalPages = this.dataStore.getTotalPages();
+        
+        if (firstBtn) firstBtn.disabled = currentPage <= 1;
+        if (prevBtn) prevBtn.disabled = currentPage <= 1;
+        if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+        if (lastBtn) lastBtn.disabled = currentPage >= totalPages;
+    }
+
+    /**
+     * Переход на страницу
+     */
+    goToPage(page) {
+        const totalPages = this.dataStore.getTotalPages();
+        if (page < 1 || page > totalPages) return;
+        
+        this.dataStore.currentPage = page;
+        this.renderTable();
+    }
+
+    /**
+     * Импорт CSV
+     */
+    importCSV(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const result = this.dataStore.importFromCSV(e.target.result);
+            this.renderTable();
+            this.updateStats();
+            this.populateDeveloperFilter();
+            this.populateDeveloperDatalist();
+            
+            if (result.errors > 0) {
+                showToast(`✅ Импортировано ${result.imported} записей. Пропущено: ${result.errors}`, false);
+            } else {
+                showToast(`✅ Импортировано ${result.imported} записей`);
+            }
+        };
+        reader.onerror = () => {
+            showToast('❌ Ошибка чтения файла', true);
+        };
+        reader.readAsText(file, 'UTF-8');
+    }
+
+    /**
+     * Экспорт CSV
+     */
+    exportCSV() {
+        const csv = this.dataStore.exportToCSV();
+        const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.href = url;
+        link.setAttribute('download', `contacts_${new Date().toISOString().slice(0, 19)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast('📥 CSV файл скачан');
+    }
+
+    /**
+     * Экспорт Excel
+     */
+    exportExcel() {
+        const data = this.dataStore.records.map(record => ({
+            'Застройщик': record.developer,
+            'Название ЖК': record.complex,
+            'Адрес ЖК': record.address,
+            'Адрес ОП': record.opAddress,
+            'Общий телефон': record.commonPhone,
+            'Менеджер': record.manager,
+            'Телефон менеджера': record.managerPhone,
+            'Должность': record.role,
+            'Категория': record.category === 'suburban' ? 'Загородная' : 'Новостройка'
+        }));
+        
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Контакты ЖК');
+        XLSX.writeFile(wb, `contacts_${new Date().toISOString().slice(0, 19)}.xlsx`);
+        showToast('📎 Excel файл скачан');
+    }
+
+    /**
+     * Настройка обработчиков событий
+     */
+    setupEventListeners() {
+        // Поиск
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.dataStore.searchQuery = e.target.value;
+                this.dataStore.applyFilters();
+                this.renderTable();
+                this.updateStats();
+            });
+        }
+        
+        // Фильтр по застройщику
+        const filterDeveloper = document.getElementById('filterDeveloper');
+        if (filterDeveloper) {
+            filterDeveloper.addEventListener('change', (e) => {
+                this.dataStore.filterDeveloper = e.target.value;
+                this.dataStore.applyFilters();
+                this.renderTable();
+                this.updateStats();
+            });
+        }
+        
+        // Фильтр по категории
+        const filterCategory = document.getElementById('filterCategory');
+        if (filterCategory) {
+            filterCategory.addEventListener('change', (e) => {
+                this.dataStore.filterCategory = e.target.value;
+                this.dataStore.applyFilters();
+                this.renderTable();
+                this.updateStats();
+            });
+        }
+        
+        // Сброс фильтров
+        const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+        if (clearFiltersBtn) {
+            clearFiltersBtn.addEventListener('click', () => {
+                if (searchInput) searchInput.value = '';
+                if (filterDeveloper) filterDeveloper.value = '';
+                if (filterCategory) filterCategory.value = '';
+                
+                this.dataStore.searchQuery = '';
+                this.dataStore.filterDeveloper = '';
+                this.dataStore.filterCategory = '';
+                this.dataStore.applyFilters();
+                this.renderTable();
+                this.updateStats();
+                
+                showToast('🔄 Фильтры сброшены');
+            });
+        }
+        
+        // Пагинация
+        const firstPageBtn = document.getElementById('firstPageBtn');
+        const prevPageBtn = document.getElementById('prevPageBtn');
+        const nextPageBtn = document.getElementById('nextPageBtn');
+        const lastPageBtn = document.getElementById('lastPageBtn');
+        const perPageSelect = document.getElementById('perPageSelect');
+        
+        if (firstPageBtn) firstPageBtn.addEventListener('click', () => this.goToPage(1));
+        if (prevPageBtn) prevPageBtn.addEventListener('click', () => this.goToPage(this.dataStore.currentPage - 1));
+        if (nextPageBtn) nextPageBtn.addEventListener('click', () => this.goToPage(this.dataStore.currentPage + 1));
+        if (lastPageBtn) lastPageBtn.addEventListener('click', () => this.goToPage(this.dataStore.getTotalPages()));
+        
+        if (perPageSelect) {
+            perPageSelect.addEventListener('change', (e) => {
+                this.dataStore.perPage = parseInt(e.target.value);
+                this.dataStore.currentPage = 1;
+                this.renderTable();
+            });
+        }
+        
+        // Кнопки импорта/экспорта
+        const importBtn = document.getElementById('importCsvBtn');
+        const importFileInput = document.getElementById('importFileInput');
+        const exportCsvBtn = document.getElementById('exportCsvBtn');
+        const exportExcelBtn = document.getElementById('exportExcelBtn');
+        
+        if (importBtn && importFileInput) {
+            importBtn.addEventListener('click', () => importFileInput.click());
+            importFileInput.addEventListener('change', (e) => {
+                if (e.target.files[0]) this.importCSV(e.target.files[0]);
+                importFileInput.value = '';
+            });
+        }
+        
+        if (exportCsvBtn) exportCsvBtn.addEventListener('click', () => this.exportCSV());
+        if (exportExcelBtn) exportExcelBtn.addEventListener('click', () => this.exportExcel());
+        
+        // Форма
+        const saveFormBtn = document.getElementById('saveFormBtn');
+        const clearFormBtn = document.getElementById('clearFormBtn');
+        
+        if (saveFormBtn) saveFormBtn.addEventListener('click', () => this.saveForm());
+        if (clearFormBtn) clearFormBtn.addEventListener('click', () => this.clearForm());
+        
+        // Автоформат телефонов в форме
+        const commonPhoneInput = document.getElementById('formCommonPhone');
+        const managerPhoneInput = document.getElementById('formManagerPhone');
+        
+        if (commonPhoneInput) {
+            commonPhoneInput.addEventListener('blur', (e) => {
+                e.target.value = formatPhone(e.target.value);
+            });
+        }
+        
+        if (managerPhoneInput) {
+            managerPhoneInput.addEventListener('blur', (e) => {
+                e.target.value = formatPhone(e.target.value);
+            });
+        }
     }
 }
 
-// ========== НАСТРОЙКА СОБЫТИЙ ==========
+// ========================================
+// ЗАПУСК ПРИЛОЖЕНИЯ
+// ========================================
 
-/**
- * Инициализация обработчиков событий
- */
-function setupEventListeners() {
-    const showFormBtn = document.getElementById('showFormBtn');
-    const cancelFormBtn = document.getElementById('cancelFormBtn');
-    const saveContactBtn = document.getElementById('saveContactBtn');
-    const addManagerBtn = document.getElementById('addManagerBtn');
-    const exportBtn = document.getElementById('exportBtn');
-    const searchBtn = document.getElementById('searchBtn');
-    const searchInput = document.getElementById('searchInput');
-    const filterType = document.getElementById('filterType');
-    
-    if (showFormBtn) {
-        showFormBtn.addEventListener('click', () => {
-            resetForm();
-            const formPanel = document.getElementById('formPanel');
-            if (formPanel) formPanel.classList.add('active');
-            showFormBtn.style.display = 'none';
-        });
-    }
-    
-    if (cancelFormBtn) cancelFormBtn.addEventListener('click', resetForm);
-    if (saveContactBtn) saveContactBtn.addEventListener('click', saveContact);
-    if (exportBtn) exportBtn.addEventListener('click', exportToCSV);
-    if (searchBtn) searchBtn.addEventListener('click', () => renderTable());
-    if (searchInput) {
-        searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') renderTable();
-        });
-    }
-    if (filterType) filterType.addEventListener('change', () => renderTable());
-    
-    if (addManagerBtn) {
-        addManagerBtn.addEventListener('click', () => {
-            const container = document.getElementById('managersContainer');
-            if (container) container.appendChild(createManagerItem());
-        });
-    }
-    
-    setupImport();
+const adminPanel = new AdminPanel();
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => adminPanel.init());
+} else {
+    adminPanel.init();
 }
 
-// ========== ЭКСПОРТ ГЛОБАЛЬНЫХ ФУНКЦИЙ (ДЛЯ ONCLICK) ==========
-window.editContact = editContact;
-window.deleteContact = deleteContact;
-
-// ========== ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ ==========
-document.addEventListener('DOMContentLoaded', () => {
-    loadData();
-    setupEventListeners();
-    updateStats();
-    renderTable();
-    populateDatalists();
-});
+export default adminPanel;
