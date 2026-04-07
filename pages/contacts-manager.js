@@ -3,7 +3,7 @@
  * Версия: 3.0
  */
 
-import { AdminPanel } from './modules/adminPanel.js';
+import { AdminPanel } from '/realty-search/pages/modules/adminPanel.js';
 
 const adminPanel = new AdminPanel();
 
