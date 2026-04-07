@@ -1,34 +1,23 @@
 /**
  * Модуль AdminPanel
  * Версия: 1.0
- * Описание: Основной класс админ-панели, управление интерфейсом
- * 
- * Экспортируемые классы:
- * - AdminPanel - основной класс
  */
-console.log('✅ adminPanel.js загружен');
-import { DataStore, createEmptyRecord } from './dataStore.js';
+
+import { DataStore } from './dataStore.js';
 import { escapeHtml, formatPhone, showToast, debounce, getCategoryDisplay, shortenRole } from './uiHelpers.js';
 import { initTheme, toggleTheme } from './themeManager.js';
 
 export class AdminPanel {
     constructor() {
         this.dataStore = new DataStore();
-        this.currentEditId = null;  // ID редактируемой записи
+        this.currentEditId = null;
     }
 
-    /**
-     * Инициализация приложения
-     */
     async init() {
-        // Инициализируем тему
         initTheme();
-        
-        // Загружаем данные
         this.dataStore.loadFromLocalStorage();
         this.dataStore.applyFilters();
         
-        // Настраиваем UI
         this.populateDeveloperFilter();
         this.populateDeveloperDatalist();
         this.renderTable();
@@ -38,9 +27,6 @@ export class AdminPanel {
         console.log('✅ Админ-панель инициализирована');
     }
 
-    /**
-     * Заполнение фильтра застройщиков
-     */
     populateDeveloperFilter() {
         const select = document.getElementById('filterDeveloper');
         if (!select) return;
@@ -56,9 +42,6 @@ export class AdminPanel {
         }
     }
 
-    /**
-     * Заполнение datalist застройщиков для формы
-     */
     populateDeveloperDatalist() {
         const datalist = document.getElementById('developersDatalist');
         if (!datalist) return;
@@ -73,9 +56,6 @@ export class AdminPanel {
         }
     }
 
-    /**
-     * Обновление статистики
-     */
     updateStats() {
         const stats = this.dataStore.getStats();
         
@@ -90,9 +70,6 @@ export class AdminPanel {
         if (totalManagersEl) totalManagersEl.textContent = stats.managers;
     }
 
-    /**
-     * Отрисовка таблицы
-     */
     renderTable() {
         const tbody = document.getElementById('tableBody');
         if (!tbody) return;
@@ -134,25 +111,19 @@ export class AdminPanel {
         this.attachTableEventListeners();
     }
 
-    /**
-     * Прикрепление обработчиков к таблице
-     */
     attachTableEventListeners() {
-        // Редактирование ячеек (inline)
         const editableCells = document.querySelectorAll('.editable');
         editableCells.forEach(cell => {
             cell.removeEventListener('click', this.handleCellClick);
             cell.addEventListener('click', this.handleCellClick.bind(this));
         });
         
-        // Кнопки редактирования строки (открывают модальное окно)
         const editButtons = document.querySelectorAll('.edit-row-btn');
         editButtons.forEach(btn => {
             btn.removeEventListener('click', this.handleEditRow);
             btn.addEventListener('click', this.handleEditRow.bind(this));
         });
         
-        // Кнопки удаления
         const deleteButtons = document.querySelectorAll('.delete-row-btn');
         deleteButtons.forEach(btn => {
             btn.removeEventListener('click', this.handleDeleteRow);
@@ -160,17 +131,13 @@ export class AdminPanel {
         });
     }
 
-    /**
-     * Обработчик клика по ячейке (inline-редактирование)
-     */
-    handleCellClick(event) {
+    handleCellClick = (event) => {
         const cell = event.currentTarget;
         const row = cell.closest('tr');
         const recordId = row.dataset.id;
         const field = cell.dataset.field;
         const currentValue = cell.textContent.trim() === '-' ? '' : cell.textContent.trim();
         
-        // Для категории и роли используем select
         let input;
         if (field === 'category') {
             input = document.createElement('select');
@@ -198,15 +165,11 @@ export class AdminPanel {
         
         const saveEdit = () => {
             let newValue = input.value;
-            if (field === 'category') newValue = input.value;
-            
             cell.classList.remove('editing');
             
-            // Получаем запись и обновляем поле
             const record = this.dataStore.records.find(r => r.id === recordId);
             if (record) {
                 record[field] = newValue;
-                // Если обновляем телефон, форматируем
                 if (field === 'commonPhone' || field === 'managerPhone') {
                     record[field] = formatPhone(newValue);
                 }
@@ -232,10 +195,7 @@ export class AdminPanel {
         });
     }
 
-    /**
-     * Обработчик редактирования строки (открытие модального окна)
-     */
-    handleEditRow(event) {
+    handleEditRow = (event) => {
         const btn = event.currentTarget;
         const row = btn.closest('tr');
         const recordId = row.dataset.id;
@@ -248,10 +208,7 @@ export class AdminPanel {
         }
     }
 
-    /**
-     * Обработчик удаления строки
-     */
-    handleDeleteRow(event) {
+    handleDeleteRow = (event) => {
         const btn = event.currentTarget;
         const row = btn.closest('tr');
         const recordId = row.dataset.id;
@@ -266,9 +223,6 @@ export class AdminPanel {
         }
     }
 
-    /**
-     * Загрузка записи в модальное окно
-     */
     loadRecordToModal(record) {
         const developerInput = document.getElementById('formDeveloper');
         const complexInput = document.getElementById('formComplex');
@@ -293,9 +247,6 @@ export class AdminPanel {
         if (modalTitle) modalTitle.innerHTML = '<i class="fas fa-edit"></i> Редактирование записи';
     }
 
-    /**
-     * Получение данных из модального окна
-     */
     getModalFormData() {
         const developerInput = document.getElementById('formDeveloper');
         const complexInput = document.getElementById('formComplex');
@@ -320,9 +271,6 @@ export class AdminPanel {
         };
     }
 
-    /**
-     * Очистка модального окна
-     */
     clearModalForm() {
         const fields = ['formDeveloper', 'formComplex', 'formAddress', 'formOpAddress', 'formCommonPhone', 'formManager', 'formManagerPhone'];
         fields.forEach(id => {
@@ -342,9 +290,6 @@ export class AdminPanel {
         this.currentEditId = null;
     }
 
-    /**
-     * Открытие модального окна
-     */
     openModal() {
         const modal = document.getElementById('recordModal');
         if (modal) {
@@ -353,9 +298,6 @@ export class AdminPanel {
         }
     }
 
-    /**
-     * Закрытие модального окна
-     */
     closeModal() {
         const modal = document.getElementById('recordModal');
         if (modal) {
@@ -365,13 +307,9 @@ export class AdminPanel {
         }
     }
 
-    /**
-     * Сохранение записи из модального окна
-     */
     saveModalForm() {
         const formData = this.getModalFormData();
         
-        // Валидация
         if (!formData.developer) {
             showToast('❌ Введите название застройщика', true);
             document.getElementById('formDeveloper')?.focus();
@@ -385,11 +323,9 @@ export class AdminPanel {
         }
         
         if (this.currentEditId) {
-            // Обновление существующей записи
             this.dataStore.updateRecord(this.currentEditId, formData);
             showToast('✅ Запись обновлена');
         } else {
-            // Добавление новой записи
             this.dataStore.addRecord(formData);
             showToast('✅ Новая запись добавлена');
         }
@@ -401,9 +337,6 @@ export class AdminPanel {
         this.populateDeveloperDatalist();
     }
 
-    /**
-     * Обновление информации о странице
-     */
     updatePageInfo() {
         const pageInfo = document.getElementById('pageInfo');
         if (pageInfo) {
@@ -411,9 +344,6 @@ export class AdminPanel {
         }
     }
 
-    /**
-     * Обновление состояния кнопок пагинации
-     */
     updatePaginationButtons() {
         const firstBtn = document.getElementById('firstPageBtn');
         const prevBtn = document.getElementById('prevPageBtn');
@@ -429,9 +359,6 @@ export class AdminPanel {
         if (lastBtn) lastBtn.disabled = currentPage >= totalPages;
     }
 
-    /**
-     * Переход на страницу
-     */
     goToPage(page) {
         const totalPages = this.dataStore.getTotalPages();
         if (page < 1 || page > totalPages) return;
@@ -440,9 +367,6 @@ export class AdminPanel {
         this.renderTable();
     }
 
-    /**
-     * Импорт CSV
-     */
     importCSV(file) {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -451,22 +375,12 @@ export class AdminPanel {
             this.updateStats();
             this.populateDeveloperFilter();
             this.populateDeveloperDatalist();
-            
-            if (result.errors > 0) {
-                showToast(`✅ Импортировано ${result.imported} записей. Пропущено: ${result.errors}`);
-            } else {
-                showToast(`✅ Импортировано ${result.imported} записей`);
-            }
+            showToast(`✅ Импортировано ${result.imported} записей`);
         };
-        reader.onerror = () => {
-            showToast('❌ Ошибка чтения файла', true);
-        };
+        reader.onerror = () => showToast('❌ Ошибка чтения файла', true);
         reader.readAsText(file, 'UTF-8');
     }
 
-    /**
-     * Экспорт CSV
-     */
     exportCSV() {
         const csv = this.dataStore.exportToCSV();
         const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
@@ -481,9 +395,6 @@ export class AdminPanel {
         showToast('📥 CSV файл скачан');
     }
 
-    /**
-     * Экспорт Excel
-     */
     exportExcel() {
         const data = this.dataStore.exportToExcelData();
         const ws = XLSX.utils.json_to_sheet(data);
@@ -493,9 +404,6 @@ export class AdminPanel {
         showToast('📎 Excel файл скачан');
     }
 
-    /**
-     * Сброс фильтров
-     */
     clearFilters() {
         const searchInput = document.getElementById('searchInput');
         const filterDeveloper = document.getElementById('filterDeveloper');
@@ -511,13 +419,9 @@ export class AdminPanel {
         this.dataStore.applyFilters();
         this.renderTable();
         this.updateStats();
-        
         showToast('🔄 Фильтры сброшены');
     }
 
-    /**
-     * Обработчик поиска с debounce
-     */
     handleSearch = debounce((value) => {
         this.dataStore.searchQuery = value;
         this.dataStore.applyFilters();
@@ -525,23 +429,15 @@ export class AdminPanel {
         this.updateStats();
     }, 300);
 
-    /**
-     * Настройка обработчиков событий
-     */
     setupEventListeners() {
-        // Переключатель темы
         const themeToggle = document.getElementById('themeToggle');
-        if (themeToggle) {
-            themeToggle.addEventListener('click', () => toggleTheme());
-        }
+        if (themeToggle) themeToggle.addEventListener('click', () => toggleTheme());
         
-        // Поиск
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
             searchInput.addEventListener('input', (e) => this.handleSearch(e.target.value));
         }
         
-        // Фильтры
         const filterDeveloper = document.getElementById('filterDeveloper');
         const filterCategory = document.getElementById('filterCategory');
         
@@ -563,13 +459,9 @@ export class AdminPanel {
             });
         }
         
-        // Сброс фильтров
         const clearFiltersBtn = document.getElementById('clearFiltersBtn');
-        if (clearFiltersBtn) {
-            clearFiltersBtn.addEventListener('click', () => this.clearFilters());
-        }
+        if (clearFiltersBtn) clearFiltersBtn.addEventListener('click', () => this.clearFilters());
         
-        // Пагинация
         const firstPageBtn = document.getElementById('firstPageBtn');
         const prevPageBtn = document.getElementById('prevPageBtn');
         const nextPageBtn = document.getElementById('nextPageBtn');
@@ -589,7 +481,6 @@ export class AdminPanel {
             });
         }
         
-        // Кнопки импорта/экспорта
         const importBtn = document.getElementById('importCsvBtn');
         const importFileInput = document.getElementById('importFileInput');
         const exportCsvBtn = document.getElementById('exportCsvBtn');
@@ -614,7 +505,6 @@ export class AdminPanel {
             });
         }
         
-        // Модальное окно
         const closeModalBtn = document.getElementById('closeModalBtn');
         const cancelModalBtn = document.getElementById('cancelModalBtn');
         const saveModalBtn = document.getElementById('saveModalBtn');
@@ -630,7 +520,6 @@ export class AdminPanel {
             });
         }
         
-        // Автоформат телефонов в модальном окне
         const commonPhoneInput = document.getElementById('formCommonPhone');
         const managerPhoneInput = document.getElementById('formManagerPhone');
         
@@ -646,11 +535,8 @@ export class AdminPanel {
             });
         }
         
-        // Закрытие по ESC
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.closeModal();
-            }
+            if (e.key === 'Escape') this.closeModal();
         });
     }
 }
