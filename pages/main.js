@@ -1,6 +1,6 @@
 /**
  * Модуль каталога застройщиков
- * Версия: 2.0
+ * Версия: 2.1
  * Описание: Отображение каталога ЖК с группировкой по застройщикам и категориям
  */
 
@@ -25,20 +25,46 @@ document.addEventListener('DOMContentLoaded', () => {
 // ========== ЗАГРУЗКА ДАННЫХ ==========
 function loadCatalogData() {
     const saved = localStorage.getItem('contactsDatabase');
+    console.log('Загрузка данных из localStorage:', saved ? 'есть данные' : 'нет данных');
+    
     if (saved) {
         try {
             const fullData = JSON.parse(saved);
+            console.log('Распарсенные данные:', fullData);
+            console.log('Застройщиков:', Object.keys(fullData.developers || {}).length);
+            console.log('Контактов:', (fullData.contacts || []).length);
+            
             catalogDatabase = {
                 developers: fullData.developers || {},
                 contacts: fullData.contacts || []
             };
+            
+            // Дополнительно: проверяем и добавляем категории где их нет
+            for (let devName in catalogDatabase.developers) {
+                if (!catalogDatabase.developers[devName].category) {
+                    // Автоопределение категории по названию
+                    const isSuburban = devName.toLowerCase().includes('кп') || 
+                                      devName.toLowerCase().includes('поселок') ||
+                                      devName.toLowerCase().includes('деревня') ||
+                                      devName.toLowerCase().includes('загород');
+                    catalogDatabase.developers[devName].category = isSuburban ? 'suburban' : 'newbuild';
+                }
+            }
+            
         } catch(e) {
             console.error('Ошибка загрузки', e);
             initCatalogDemoData();
         }
     } else {
+        console.log('Нет данных в localStorage, загружаем демо-данные');
         initCatalogDemoData();
     }
+    
+    // Выводим итоговую статистику
+    console.log('Итоговые данные для отображения:');
+    console.log('- Застройщиков:', Object.keys(catalogDatabase.developers).length);
+    console.log('- Контактов:', catalogDatabase.contacts.length);
+    
     renderCatalog();
 }
 
@@ -50,7 +76,7 @@ function initCatalogDemoData() {
         developers: {
             "Расцветай": {
                 id: "dev_1",
-                complexes: ["Эко-квартал на Кедровой", "Расцветай на Красном", "Сакура Парк", "Расцветай на Зорге"],
+                complexes: ["Эко-квартал на Кедровой", "Расцветай на Красном", "Сакура Парк", "Расцветай на Зорге", "Цветной Бульвар", "Квартал на Игарской", "Тайм Парк", "Лофт.Наука"],
                 address: "",
                 commonPhone: "+7(383) 255-88-22",
                 opAddress: "",
@@ -72,23 +98,88 @@ function initCatalogDemoData() {
                 opAddress: "",
                 category: "newbuild"
             },
-            "КПД-Газстрой": {
+            "ГК Союз": {
                 id: "dev_4",
+                complexes: ["Самоцветы"],
+                address: "",
+                commonPhone: "383-20-23",
+                opAddress: "",
+                category: "newbuild"
+            },
+            "ГК Поляков": {
+                id: "dev_5",
+                complexes: ["Актив"],
+                address: "г. Новосибирск, ул. Дуси Ковальчук, 246/1 (Актив)",
+                commonPhone: "+7 (383) 390",
+                opAddress: "",
+                category: "newbuild"
+            },
+            "КПД-Газстрой": {
+                id: "dev_6",
                 complexes: ["Чистая Слобода", "Тайгинский парк", "Калина Красная"],
                 address: "",
                 commonPhone: "+7 (383) 363-24-80",
                 opAddress: "Красный проспект, 39",
                 category: "newbuild"
+            },
+            "КП «Сосновый Бор»": {
+                id: "dev_7",
+                complexes: ["Сосновый Бор 1", "Сосновый Бор 2"],
+                address: "Новосибирский район, пос. Кудряшовский",
+                commonPhone: "+7 (383) 123-45-67",
+                opAddress: "",
+                category: "suburban"
+            },
+            "Загородный Клуб «Береговой»": {
+                id: "dev_8",
+                complexes: ["Береговой квартал", "Резиденция Берег"],
+                address: "Искитимский район, с. Береговое",
+                commonPhone: "+7 (383) 987-65-43",
+                opAddress: "",
+                category: "suburban"
             }
         },
         contacts: [
+            // Расцветай
             { developer: "Расцветай", complex: "Эко-квартал на Кедровой", name: "Данил Швец", phone: "+7 961 873-63-10", role: "менеджер" },
             { developer: "Расцветай", complex: "Эко-квартал на Кедровой", name: "Александра Гаммель", phone: "+7 961 848-39-56", role: "менеджер" },
             { developer: "Расцветай", complex: "Расцветай на Красном", name: "Денис Бородин", phone: "+7 960 792-82-68", role: "менеджер" },
+            { developer: "Расцветай", complex: "Расцветай на Красном", name: "Алевтина Некрасова", phone: "+7 960 792-89-17", role: "менеджер" },
+            { developer: "Расцветай", complex: "Расцветай на Красном", name: "Римма Усманова", phone: "+7 962 838-39-92", role: "менеджер" },
+            { developer: "Расцветай", complex: "Расцветай на Красном", name: "Ирина Бойцова", phone: "+7 962 838 39 94", role: "менеджер" },
+            { developer: "Расцветай", complex: "Сакура Парк", name: "Андрей Булавин", phone: "+7 960 792-82-46", role: "менеджер" },
+            { developer: "Расцветай", complex: "Сакура Парк", name: "Олеся Леонтьева", phone: "+7 960 792-88-43", role: "менеджер" },
+            { developer: "Расцветай", complex: "Сакура Парк", name: "Мария Калифкина", phone: "+7 960 792-83-97", role: "менеджер" },
+            { developer: "Расцветай", complex: "Расцветай на Зорге", name: "Татьяна Мартынова", phone: "+7 961 226-59-43", role: "менеджер" },
+            
+            // VIRA
             { developer: "VIRA (Вира)", complex: "CITATUM (Цитатум)", name: "Екатерина Рольгайзер", phone: "+7 913 723-00-37", role: "специалист по работе с партнерами" },
+            { developer: "VIRA (Вира)", complex: "CITATUM (Цитатум)", name: "Татьяна Меренцова", phone: "+7 999 320 26 00", role: "специалист по работе с партнерами" },
+            { developer: "VIRA (Вира)", complex: "CITATUM (Цитатум)", name: "Максим Попов", phone: "+7 (923) 242-37-72", role: "специалист по работе с партнерами" },
+            
+            // Брусника
+            { developer: "Брусника. Сибакадемстрой", complex: "Европейский Берег", name: "Анатолий Шелудько", phone: "+7 999 467 9278", role: "менеджер" },
+            { developer: "Брусника. Сибакадемстрой", complex: "Европейский Берег", name: "Роман Семенец", phone: "+7 913 461 7222", role: "менеджер" },
+            { developer: "Брусника. Сибакадемстрой", complex: "Европейский Берег", name: "Даниил Белов", phone: "+7 913 200 1855", role: "менеджер" },
             { developer: "Брусника. Сибакадемстрой", complex: "Авиатор", name: "Максим Попов", phone: "+7 999 463 3627", role: "менеджер" },
             { developer: "Брусника. Сибакадемстрой", complex: "Авиатор", name: "Виктор Павлов", phone: "+7 913 627 5181", role: "менеджер" },
-            { developer: "КПД-Газстрой", complex: "Чистая Слобода", name: "Светлана Дудина", phone: "+7 913 981-00-71", role: "менеджер" }
+            
+            // ГК Союз
+            { developer: "ГК Союз", complex: "Самоцветы", name: "Алёна Филиппова", phone: "+7 923 107-15-56", role: "менеджер" },
+            { developer: "ГК Союз", complex: "Самоцветы", name: "Арина Шайбекова", phone: "+7 923 220-11-47", role: "менеджер" },
+            
+            // ГК Поляков
+            { developer: "ГК Поляков", complex: "Актив", name: "Николай Драницын", phone: "8-913-786-0647", role: "менеджер" },
+            { developer: "ГК Поляков", complex: "Актив", name: "Максим Леонов", phone: "+7 923 237 88 98", role: "менеджер" },
+            
+            // КПД-Газстрой
+            { developer: "КПД-Газстрой", complex: "Чистая Слобода", name: "Светлана Дудина", phone: "+7 913 981-00-71", role: "менеджер" },
+            { developer: "КПД-Газстрой", complex: "Чистая Слобода", name: "Белая Татьяна", phone: "+7 965 822-00-73", role: "менеджер" },
+            
+            // Загородка
+            { developer: "КП «Сосновый Бор»", complex: "Сосновый Бор 1", name: "Ирина Соснова", phone: "+7 913 123-45-67", role: "менеджер" },
+            { developer: "КП «Сосновый Бор»", complex: "Сосновый Бор 2", name: "Алексей Боровой", phone: "+7 913 234-56-78", role: "руководитель ОП" },
+            { developer: "Загородный Клуб «Береговой»", complex: "Береговой квартал", name: "Мария Прибрежная", phone: "+7 913 345-67-89", role: "менеджер" }
         ]
     };
 }
@@ -100,13 +191,11 @@ function handleUrlCategory() {
     
     if (category === 'newbuild') {
         currentCategory = 'newbuild';
-        // Активируем вкладку Новостройки
         const newbuildTab = document.querySelector('.tab[data-category="newbuild"]');
         if (newbuildTab) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             newbuildTab.classList.add('active');
         }
-        // Меняем заголовок
         const headerTitle = document.querySelector('.header h1');
         if (headerTitle) {
             headerTitle.innerHTML = '<i class="fas fa-city"></i> Новостройки Новосибирска';
@@ -146,9 +235,12 @@ function getFilteredDevelopers() {
         ...data
     }));
     
+    console.log('Всего застройщиков до фильтрации:', developers.length);
+    
     // Фильтр по категории
     if (currentCategory !== 'all') {
         developers = developers.filter(dev => dev.category === currentCategory);
+        console.log(`После фильтра по категории "${currentCategory}":`, developers.length);
     }
     
     // Поиск
@@ -174,6 +266,7 @@ function getFilteredDevelopers() {
             
             return false;
         });
+        console.log(`После поиска "${searchQuery}":`, developers.length);
     }
     
     // Сортировка по алфавиту
