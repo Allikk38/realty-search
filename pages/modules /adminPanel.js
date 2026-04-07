@@ -1,7 +1,7 @@
 /**
  * Модуль AdminPanel
  * Версия: 1.0
- */
+ */ 
 
 import { DataStore } from './dataStore.js';
 import { escapeHtml, formatPhone, showToast, debounce, getCategoryDisplay, shortenRole } from './uiHelpers.js';
