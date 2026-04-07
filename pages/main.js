@@ -1,6 +1,6 @@
 /**
  * Модуль каталога застройщиков
- * Версия: 3.0
+ * Версия: 4.0
  * Описание: Отображение каталога ЖК с группировкой по застройщикам и категориям
  * 
  * Особенности:
@@ -8,18 +8,8 @@
  * - Кеширование в localStorage
  * - Фильтрация по категориям (Новостройки/Загородная)
  * - Поиск по застройщикам, ЖК и менеджерам
+ * - Исправлена проблема с пустыми застройщиками
  */
-
-// ========== СОСТОЯНИЕ МОДУЛЯ (ЗАКРЫТОЕ) ==========
-const state = {
-    database: {
-        developers: {},
-        contacts: []
-    },
-    currentCategory: 'all',
-    searchQuery: '',
-    lastUpdate: null
-};
 
 // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 
@@ -28,7 +18,7 @@ const state = {
  * @param {string} str - Входная строка
  * @returns {string} - Экранированная строка
  */
-function escapeHtml(str) {
+export function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/[&<>]/g, (m) => {
         if (m === '&') return '&amp;';
@@ -43,7 +33,7 @@ function escapeHtml(str) {
  * @param {string} phone - Номер телефона
  * @returns {string} - Отформатированный номер
  */
-function formatPhoneForDisplay(phone) {
+export function formatPhoneForDisplay(phone) {
     if (!phone) return '';
     let cleaned = String(phone).replace(/[^\d+]/g, '');
     if (cleaned.startsWith('8') && cleaned.length === 11) {
@@ -60,7 +50,7 @@ function formatPhoneForDisplay(phone) {
  * @param {string} message - Текст уведомления
  * @param {boolean} isError - Флаг ошибки
  */
-function showToast(message, isError = false) {
+export function showToast(message, isError = false) {
     const existing = document.querySelector('.toast');
     if (existing) existing.remove();
     
@@ -72,21 +62,35 @@ function showToast(message, isError = false) {
     setTimeout(() => toast.remove(), 2500);
 }
 
-// ========== ЗАГРУЗКА ДАННЫХ ИЗ CSV ==========
+/**
+ * Очистка названия от мусора
+ * @param {string} str - Входная строка
+ * @returns {string} - Очищенная строка
+ */
+export function cleanName(str) {
+    if (!str) return '';
+    return str
+        .replace(/Сайт|ТГ-канал|Realt.one/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+// ========== ПАРСИНГ CSV ==========
 
 /**
  * Парсинг CSV в структуру базы данных
  * @param {string} csvText - Содержимое CSV файла
  * @returns {Object} - Объект с developers и contacts
  */
-function parseCSVToDatabase(csvText) {
+export function parseCSVToDatabase(csvText) {
     const lines = csvText.split('\n');
     if (lines.length === 0) return { developers: {}, contacts: [] };
     
-    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
-    
     const developers = {};
     const contacts = [];
+    
+    // Счетчик для генерации имен застройщиков по умолчанию
+    let unknownCounter = 0;
     
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -110,7 +114,7 @@ function parseCSVToDatabase(csvText) {
         row.push(current.trim());
         
         // Извлекаем значения по индексам
-        const developer = row[0]?.replace(/^"|"$/g, '')?.trim();
+        let developer = row[0]?.replace(/^"|"$/g, '')?.trim();
         const complex = row[1]?.replace(/^"|"$/g, '')?.trim();
         const address = row[2]?.replace(/^"|"$/g, '')?.trim() || '';
         const opAddress = row[3]?.replace(/^"|"$/g, '')?.trim() || '';
@@ -120,17 +124,18 @@ function parseCSVToDatabase(csvText) {
         const role = row[7]?.replace(/^"|"$/g, '')?.trim() || 'менеджер';
         const category = row[8]?.replace(/^"|"$/g, '')?.trim() || 'newbuild';
         
-        if (!developer || !complex) continue;
+        if (!complex) continue;
         
-        // Очищаем названия от мусора
-        const cleanDeveloper = developer
-            .replace(/Сайт|ТГ-канал|Realt.one/g, '')
-            .replace(/\s{2,}/g, ' ')
-            .trim();
-        const cleanComplex = complex
-            .replace(/Сайт|ТГ-канал|Realt.one/g, '')
-            .replace(/\s{2,}/g, ' ')
-            .trim();
+        // ========== КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ ==========
+        // Если застройщик пустой, создаем имя на основе ЖК
+        if (!developer || developer === '') {
+            unknownCounter++;
+            developer = `[ЖК без застройщика ${unknownCounter}]`;
+        }
+        
+        // Очищаем названия
+        const cleanDeveloper = cleanName(developer);
+        const cleanComplex = cleanName(complex);
         
         // Добавляем застройщика
         if (!developers[cleanDeveloper]) {
@@ -140,7 +145,9 @@ function parseCSVToDatabase(csvText) {
                 address: address,
                 opAddress: opAddress,
                 commonPhone: commonPhone,
-                category: category
+                category: category,
+                // Сохраняем оригинальное имя для отображения
+                originalName: developer
             };
         }
         
@@ -151,10 +158,13 @@ function parseCSVToDatabase(csvText) {
             devData.complexes.push(cleanComplex);
         }
         
-        // Обновляем адреса и телефоны
+        // Обновляем адреса и телефоны (берем непустые значения)
         if (address && !devData.address) devData.address = address;
         if (opAddress && !devData.opAddress) devData.opAddress = opAddress;
         if (commonPhone && !devData.commonPhone) devData.commonPhone = commonPhone;
+        
+        // Если у застройщика еще нет категории, устанавливаем
+        if (!devData.category && category) devData.category = category;
         
         // Добавляем контакт (если это менеджер, а не общий телефон)
         if (manager && manager !== 'Общий телефон' && manager !== 'Телефон ОП' && managerPhone) {
@@ -176,17 +186,56 @@ function parseCSVToDatabase(csvText) {
         }
     }
     
+    console.log(`📊 Парсинг завершен: ${Object.keys(developers).length} застройщиков, ${contacts.length} контактов`);
+    
     return { developers, contacts };
+}
+
+// ========== РАБОТА С ХРАНИЛИЩЕМ ==========
+
+/**
+ * Сохранение данных в localStorage
+ * @param {Object} database - База данных для сохранения
+ */
+export function saveToLocalStorage(database) {
+    try {
+        localStorage.setItem('contactsDatabase', JSON.stringify(database));
+        localStorage.setItem('lastDataUpdate', new Date().toISOString());
+        console.log('💾 Данные сохранены в localStorage');
+        return true;
+    } catch (e) {
+        console.error('Ошибка сохранения в localStorage:', e);
+        return false;
+    }
+}
+
+/**
+ * Загрузка данных из localStorage
+ * @returns {Object|null} - Загруженная база данных или null
+ */
+export function loadFromLocalStorage() {
+    try {
+        const saved = localStorage.getItem('contactsDatabase');
+        if (!saved) return null;
+        
+        const data = JSON.parse(saved);
+        console.log('📀 Данные загружены из localStorage');
+        return data;
+    } catch (e) {
+        console.error('Ошибка загрузки из localStorage:', e);
+        return null;
+    }
 }
 
 /**
  * Загрузка данных из CSV файла с GitHub
- * @returns {Promise<boolean>} - Успех загрузки
+ * @returns {Promise<Object|null>} - Объект с developers и contacts или null
  */
-async function loadDataFromGitHub() {
+export async function loadDataFromGitHub() {
     const csvUrl = 'https://raw.githubusercontent.com/allikk38/realty-search/main/data.csv';
     
     try {
+        console.log('🔄 Загрузка данных с GitHub...');
         const response = await fetch(csvUrl + '?t=' + Date.now());
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
@@ -194,59 +243,25 @@ async function loadDataFromGitHub() {
         const parsedData = parseCSVToDatabase(csvText);
         
         if (parsedData && Object.keys(parsedData.developers).length > 0) {
-            // Сохраняем в localStorage
-            localStorage.setItem('contactsDatabase', JSON.stringify(parsedData));
-            localStorage.setItem('lastDataUpdate', new Date().toISOString());
-            console.log('✅ Данные автоматически обновлены из GitHub');
-            console.log(`   Застройщиков: ${Object.keys(parsedData.developers).length}`);
-            console.log(`   Контактов: ${parsedData.contacts.length}`);
-            return true;
+            saveToLocalStorage(parsedData);
+            console.log(`✅ Данные загружены из GitHub: ${Object.keys(parsedData.developers).length} застройщиков`);
+            return parsedData;
+        } else {
+            console.warn('⚠️ GitHub вернул пустые данные');
+            return null;
         }
     } catch (err) {
-        console.error('Ошибка загрузки данных с GitHub:', err);
-        return false;
-    }
-}
-
-/**
- * Загрузка данных из localStorage
- * @returns {boolean} - Успех загрузки
- */
-function loadDataFromLocalStorage() {
-    const saved = localStorage.getItem('contactsDatabase');
-    if (!saved) return false;
-    
-    try {
-        const fullData = JSON.parse(saved);
-        state.database = {
-            developers: fullData.developers || {},
-            contacts: fullData.contacts || []
-        };
-        
-        // Добавляем категории, если их нет
-        for (const devName in state.database.developers) {
-            if (!state.database.developers[devName].category) {
-                const isSuburban = devName.toLowerCase().includes('кп') || 
-                                  devName.toLowerCase().includes('поселок') ||
-                                  devName.toLowerCase().includes('деревня') ||
-                                  devName.toLowerCase().includes('загород');
-                state.database.developers[devName].category = isSuburban ? 'suburban' : 'newbuild';
-            }
-        }
-        
-        state.lastUpdate = localStorage.getItem('lastDataUpdate');
-        return true;
-    } catch(e) {
-        console.error('Ошибка загрузки из localStorage:', e);
-        return false;
+        console.error('❌ Ошибка загрузки данных с GitHub:', err);
+        return null;
     }
 }
 
 /**
  * Инициализация демонстрационных данных (на случай, если нет данных)
+ * @returns {Object} - Демо-база данных
  */
-function initDemoData() {
-    state.database = {
+export function initDemoData() {
+    const demoData = {
         developers: {
             "Расцветай": {
                 id: "dev_1",
@@ -279,121 +294,57 @@ function initDemoData() {
             { developer: "Расцветай", complex: "Расцветай на Красном", name: "Денис Бородин", phone: "+7 960 792-82-68", role: "менеджер" }
         ]
     };
-    localStorage.setItem('contactsDatabase', JSON.stringify(state.database));
-    console.log('📦 Загружены демо-данные');
+    
+    saveToLocalStorage(demoData);
+    console.log('📦 Инициализированы демо-данные');
+    return demoData;
 }
 
 /**
  * Основная функция загрузки данных
+ * @returns {Promise<Object>} - Загруженная база данных
  */
-async function loadCatalogData() {
+export async function loadCatalogData() {
     // Сначала пробуем загрузить свежие данные с GitHub
-    const updated = await loadDataFromGitHub();
+    let data = await loadDataFromGitHub();
     
-    if (!updated) {
+    if (!data) {
         // Если не удалось загрузить с GitHub, берем из localStorage
-        if (!loadDataFromLocalStorage()) {
-            initDemoData();
+        data = loadFromLocalStorage();
+    }
+    
+    if (!data) {
+        // Если нет данных в localStorage, создаем демо
+        data = initDemoData();
+    }
+    
+    // Добавляем категории, если их нет
+    for (const devName in data.developers) {
+        if (!data.developers[devName].category) {
+            const isSuburban = devName.toLowerCase().includes('кп') || 
+                              devName.toLowerCase().includes('поселок') ||
+                              devName.toLowerCase().includes('деревня') ||
+                              devName.toLowerCase().includes('загород');
+            data.developers[devName].category = isSuburban ? 'suburban' : 'newbuild';
         }
-    } else {
-        // Данные уже загружены в loadDataFromGitHub и сохранены в localStorage
-        loadDataFromLocalStorage();
     }
     
     console.log('📊 Итоговые данные:');
-    console.log(`   Застройщиков: ${Object.keys(state.database.developers).length}`);
-    console.log(`   Контактов: ${state.database.contacts.length}`);
+    console.log(`   Застройщиков: ${Object.keys(data.developers).length}`);
+    console.log(`   Контактов: ${data.contacts.length}`);
     
-    renderCatalog();
+    return data;
 }
 
-// ========== ОБРАБОТКА ПАРАМЕТРОВ URL ==========
-
-/**
- * Обработка параметра категории из URL
- */
-function handleUrlCategory() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const category = urlParams.get('category');
-    
-    if (category === 'newbuild') {
-        state.currentCategory = 'newbuild';
-        const newbuildTab = document.querySelector('.tab[data-category="newbuild"]');
-        if (newbuildTab) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            newbuildTab.classList.add('active');
-        }
-        const headerTitle = document.querySelector('.header h1');
-        if (headerTitle) {
-            headerTitle.innerHTML = '<i class="fas fa-city"></i> Новостройки Новосибирска';
-        }
-    } else if (category === 'suburban') {
-        state.currentCategory = 'suburban';
-        const suburbanTab = document.querySelector('.tab[data-category="suburban"]');
-        if (suburbanTab) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            suburbanTab.classList.add('active');
-        }
-        const headerTitle = document.querySelector('.header h1');
-        if (headerTitle) {
-            headerTitle.innerHTML = '<i class="fas fa-tree"></i> Загородная недвижимость';
-        }
-    }
-}
-
-// ========== ПОЛУЧЕНИЕ ОТФИЛЬТРОВАННЫХ ЗАСТРОЙЩИКОВ ==========
-
-/**
- * Получение отфильтрованных застройщиков
- * @returns {Array} - Массив отфильтрованных застройщиков
- */
-function getFilteredDevelopers() {
-    let developers = Object.entries(state.database.developers).map(([name, data]) => ({
-        name: name,
-        ...data
-    }));
-    
-    // Фильтр по категории
-    if (state.currentCategory !== 'all') {
-        developers = developers.filter(dev => dev.category === state.currentCategory);
-    }
-    
-    // Поиск
-    if (state.searchQuery) {
-        const query = state.searchQuery.toLowerCase();
-        developers = developers.filter(dev => {
-            if (dev.name.toLowerCase().includes(query)) return true;
-            
-            const hasMatchingComplex = dev.complexes.some(complex => 
-                String(complex).toLowerCase().includes(query)
-            );
-            if (hasMatchingComplex) return true;
-            
-            const hasMatchingContact = state.database.contacts.some(contact => 
-                contact.developer === dev.name && 
-                (contact.name.toLowerCase().includes(query) || 
-                 contact.phone.includes(query))
-            );
-            if (hasMatchingContact) return true;
-            
-            return false;
-        });
-    }
-    
-    // Сортировка по алфавиту
-    developers.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-    
-    return developers;
-}
-
-// ========== ОТОБРАЖЕНИЕ КАТАЛОГА ==========
+// ========== КОМПОНЕНТЫ ОТОБРАЖЕНИЯ ==========
 
 /**
  * Рендер карточки застройщика
  * @param {Object} developer - Объект застройщика
+ * @param {Array} contacts - Массив контактов
  * @returns {string} HTML строка
  */
-function renderDeveloperCard(developer) {
+export function renderDeveloperCard(developer, contacts) {
     const category = developer.category === 'suburban' ? 'suburban' : 'newbuild';
     const categoryIcon = category === 'suburban' ? 'fa-tree' : 'fa-city';
     const categoryText = category === 'suburban' ? 'Загородная' : 'Новостройка';
@@ -402,14 +353,17 @@ function renderDeveloperCard(developer) {
         name: complex,
         commonPhone: developer.commonPhone || '',
         address: developer.address || developer.opAddress || '',
-        managers: state.database.contacts.filter(c => c.developer === developer.name && c.complex === complex)
+        managers: contacts.filter(c => c.developer === developer.name && c.complex === complex)
     }));
     
     const totalContacts = complexesWithContacts.reduce((sum, c) => sum + c.managers.length, 0);
     
+    // Если у застройщика есть адрес офиса продаж, показываем его
+    const hasOfficeAddress = developer.opAddress && developer.opAddress !== '';
+    
     return `
         <div class="developer-card" data-developer="${escapeHtml(developer.name)}" data-category="${category}">
-            <div class="developer-header" onclick="window.toggleDeveloper(this)">
+            <div class="developer-header" data-toggle="developer">
                 <div class="developer-info">
                     <div class="developer-icon">
                         <i class="fas ${categoryIcon}"></i>
@@ -420,6 +374,7 @@ function renderDeveloperCard(developer) {
                             <span><i class="fas fa-home"></i> ${developer.complexes.length} ЖК</span>
                             <span><i class="fas fa-phone"></i> ${totalContacts} контактов</span>
                             <span><i class="fas fa-tag"></i> ${categoryText}</span>
+                            ${hasOfficeAddress ? `<span><i class="fas fa-map-pin"></i> ОП: ${escapeHtml(developer.opAddress)}</span>` : ''}
                         </div>
                     </div>
                 </div>
@@ -437,13 +392,13 @@ function renderDeveloperCard(developer) {
  * @param {Object} complex - Объект ЖК
  * @returns {string} HTML строка
  */
-function renderComplexCard(complex) {
+export function renderComplexCard(complex) {
     const hasManagers = complex.managers.length > 0;
-    const hasCommonPhone = complex.commonPhone;
+    const hasCommonPhone = complex.commonPhone && complex.commonPhone !== '';
     
     return `
         <div class="complex-item" data-complex="${escapeHtml(complex.name)}">
-            <div class="complex-header" onclick="window.toggleComplex(this)">
+            <div class="complex-header" data-toggle="complex">
                 <div class="complex-name">
                     <i class="fas fa-building"></i>
                     ${escapeHtml(complex.name)}
@@ -452,7 +407,7 @@ function renderComplexCard(complex) {
                     <div class="complex-phone">
                         <i class="fas fa-phone-alt"></i>
                         ${formatPhoneForDisplay(complex.commonPhone)}
-                        <button class="copy-btn" onclick="event.stopPropagation(); window.copyToClipboard('${complex.commonPhone.replace(/'/g, "\\'")}')">
+                        <button class="copy-btn" data-copy="${complex.commonPhone.replace(/'/g, "\\'")}">
                             <i class="fas fa-copy"></i>
                         </button>
                     </div>
@@ -481,7 +436,7 @@ function renderComplexCard(complex) {
                                     <a href="tel:${manager.phone.replace(/[^\d+]/g, '')}" class="manager-phone">
                                         <i class="fas fa-phone-alt"></i> ${formatPhoneForDisplay(manager.phone)}
                                     </a>
-                                    <button class="copy-btn" onclick="window.copyToClipboard('${manager.phone.replace(/'/g, "\\'")}')">
+                                    <button class="copy-btn" data-copy="${manager.phone.replace(/'/g, "\\'")}">
                                         <i class="fas fa-copy"></i>
                                     </button>
                                 </div>
@@ -498,141 +453,283 @@ function renderComplexCard(complex) {
     `;
 }
 
-/**
- * Отрисовка каталога
- */
-function renderCatalog() {
-    const catalog = document.getElementById('catalog');
-    if (!catalog) return;
-    
-    const filteredDevs = getFilteredDevelopers();
-    
-    if (filteredDevs.length === 0) {
-        catalog.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-search"></i>
-                <p>Ничего не найдено по вашему запросу</p>
-                <button class="btn btn-outline" onclick="window.clearSearch()" style="margin-top: 20px;">
-                    <i class="fas fa-undo"></i> Очистить поиск
-                </button>
-            </div>
-        `;
-        return;
+// ========== ОСНОВНОЙ КЛАСС КАТАЛОГА ==========
+
+class Catalog {
+    constructor() {
+        this.database = {
+            developers: {},
+            contacts: []
+        };
+        this.currentCategory = 'all';
+        this.searchQuery = '';
+        this.isInitialized = false;
     }
-    
-    catalog.innerHTML = filteredDevs.map(dev => renderDeveloperCard(dev)).join('');
-    attachCatalogEventHandlers();
-}
 
-// ========== ОБРАБОТЧИКИ СОБЫТИЙ ==========
-
-function toggleDeveloper(element) {
-    const card = element.closest('.developer-card');
-    if (card) card.classList.toggle('collapsed');
-}
-
-function toggleComplex(element) {
-    const item = element.closest('.complex-item');
-    if (item) item.classList.toggle('collapsed');
-}
-
-function copyToClipboard(text) {
-    navigator.clipboard.writeText(text).then(() => {
-        showToast(`✅ Скопировано: ${text}`);
-    }).catch(() => {
-        showToast('❌ Не удалось скопировать', true);
-    });
-}
-
-function clearSearch() {
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput) searchInput.value = '';
-    state.searchQuery = '';
-    renderCatalog();
-}
-
-function attachCatalogEventHandlers() {
-    document.querySelectorAll('.developer-card').forEach(card => {
-        card.classList.remove('collapsed');
-    });
-    document.querySelectorAll('.complex-item').forEach(item => {
-        item.classList.add('collapsed');
-    });
-}
-
-// ========== НАСТРОЙКА СОБЫТИЙ ==========
-
-function setupCatalogEventListeners() {
-    // Вкладки
-    const tabs = document.querySelectorAll('.tab');
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            tabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            state.currentCategory = tab.dataset.category;
-            renderCatalog();
-        });
-    });
-    
-    // Поиск
-    const searchInput = document.getElementById('searchInput');
-    const searchBtn = document.getElementById('searchBtn');
-    
-    if (searchBtn) {
-        searchBtn.addEventListener('click', () => {
-            state.searchQuery = searchInput?.value.trim() || '';
-            renderCatalog();
-        });
+    /**
+     * Получение отфильтрованных застройщиков
+     * @returns {Array} - Массив отфильтрованных застройщиков
+     */
+    getFilteredDevelopers() {
+        let developers = Object.entries(this.database.developers).map(([name, data]) => ({
+            name: name,
+            ...data
+        }));
+        
+        // Фильтр по категории
+        if (this.currentCategory !== 'all') {
+            developers = developers.filter(dev => dev.category === this.currentCategory);
+        }
+        
+        // Поиск
+        if (this.searchQuery) {
+            const query = this.searchQuery.toLowerCase();
+            developers = developers.filter(dev => {
+                if (dev.name.toLowerCase().includes(query)) return true;
+                
+                const hasMatchingComplex = dev.complexes.some(complex => 
+                    String(complex).toLowerCase().includes(query)
+                );
+                if (hasMatchingComplex) return true;
+                
+                const hasMatchingContact = this.database.contacts.some(contact => 
+                    contact.developer === dev.name && 
+                    (contact.name.toLowerCase().includes(query) || 
+                     contact.phone.includes(query))
+                );
+                if (hasMatchingContact) return true;
+                
+                return false;
+            });
+        }
+        
+        // Сортировка по алфавиту
+        developers.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+        
+        return developers;
     }
-    
-    if (searchInput) {
-        searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                state.searchQuery = searchInput.value.trim();
-                renderCatalog();
-            }
-        });
-    }
-    
-    // Категория в поиске
-    const categoryFilter = document.getElementById('categoryFilter');
-    if (categoryFilter) {
-        categoryFilter.addEventListener('change', () => {
-            const value = categoryFilter.value;
-            if (value === 'all') state.currentCategory = 'all';
-            else if (value === 'newbuild') state.currentCategory = 'newbuild';
-            else if (value === 'suburban') state.currentCategory = 'suburban';
+
+    /**
+     * Отрисовка каталога
+     */
+    render() {
+        const catalog = document.getElementById('catalog');
+        if (!catalog) return;
+        
+        const filteredDevs = this.getFilteredDevelopers();
+        
+        if (filteredDevs.length === 0) {
+            catalog.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-search"></i>
+                    <p>Ничего не найдено по вашему запросу</p>
+                    <button class="btn btn-outline" id="clearSearchBtn" style="margin-top: 20px;">
+                        <i class="fas fa-undo"></i> Очистить поиск
+                    </button>
+                </div>
+            `;
             
-            const tabs = document.querySelectorAll('.tab');
-            tabs.forEach(tab => {
-                if (tab.dataset.category === state.currentCategory) {
-                    tab.classList.add('active');
-                } else {
-                    tab.classList.remove('active');
+            const clearBtn = document.getElementById('clearSearchBtn');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => this.clearSearch());
+            }
+            return;
+        }
+        
+        catalog.innerHTML = filteredDevs.map(dev => 
+            renderDeveloperCard(dev, this.database.contacts)
+        ).join('');
+        
+        this.attachEventHandlers();
+    }
+
+    /**
+     * Прикрепление обработчиков событий к элементам каталога
+     */
+    attachEventHandlers() {
+        // Обработчики для разворачивания/сворачивания застройщиков
+        const developerHeaders = document.querySelectorAll('[data-toggle="developer"]');
+        developerHeaders.forEach(header => {
+            header.removeEventListener('click', this.handleDeveloperToggle);
+            header.addEventListener('click', this.handleDeveloperToggle);
+        });
+        
+        // Обработчики для разворачивания/сворачивания ЖК
+        const complexHeaders = document.querySelectorAll('[data-toggle="complex"]');
+        complexHeaders.forEach(header => {
+            header.removeEventListener('click', this.handleComplexToggle);
+            header.addEventListener('click', this.handleComplexToggle);
+        });
+        
+        // Обработчики для кнопок копирования
+        const copyBtns = document.querySelectorAll('[data-copy]');
+        copyBtns.forEach(btn => {
+            btn.removeEventListener('click', this.handleCopy);
+            btn.addEventListener('click', this.handleCopy);
+        });
+    }
+
+    handleDeveloperToggle(event) {
+        const card = event.currentTarget.closest('.developer-card');
+        if (card) card.classList.toggle('collapsed');
+    }
+
+    handleComplexToggle(event) {
+        const item = event.currentTarget.closest('.complex-item');
+        if (item) item.classList.toggle('collapsed');
+    }
+
+    handleCopy(event) {
+        event.stopPropagation();
+        const text = event.currentTarget.getAttribute('data-copy');
+        if (text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast(`✅ Скопировано: ${text}`);
+            }).catch(() => {
+                showToast('❌ Не удалось скопировать', true);
+            });
+        }
+    }
+
+    /**
+     * Очистка поиска
+     */
+    clearSearch() {
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) searchInput.value = '';
+        this.searchQuery = '';
+        this.render();
+    }
+
+    /**
+     * Настройка обработчиков событий интерфейса
+     */
+    setupEventListeners() {
+        // Вкладки
+        const tabs = document.querySelectorAll('.tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                this.currentCategory = tab.dataset.category;
+                this.render();
+            });
+        });
+        
+        // Поиск
+        const searchInput = document.getElementById('searchInput');
+        const searchBtn = document.getElementById('searchBtn');
+        
+        if (searchBtn) {
+            searchBtn.addEventListener('click', () => {
+                this.searchQuery = searchInput?.value.trim() || '';
+                this.render();
+            });
+        }
+        
+        if (searchInput) {
+            searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.searchQuery = searchInput.value.trim();
+                    this.render();
                 }
             });
-            
-            renderCatalog();
-        });
+        }
+        
+        // Категория в поиске
+        const categoryFilter = document.getElementById('categoryFilter');
+        if (categoryFilter) {
+            categoryFilter.addEventListener('change', () => {
+                const value = categoryFilter.value;
+                this.currentCategory = value;
+                
+                const tabs = document.querySelectorAll('.tab');
+                tabs.forEach(tab => {
+                    if (tab.dataset.category === this.currentCategory) {
+                        tab.classList.add('active');
+                    } else {
+                        tab.classList.remove('active');
+                    }
+                });
+                
+                this.render();
+            });
+        }
+    }
+
+    /**
+     * Обработка параметра категории из URL
+     */
+    handleUrlCategory() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const category = urlParams.get('category');
+        
+        if (category === 'newbuild') {
+            this.currentCategory = 'newbuild';
+            const newbuildTab = document.querySelector('.tab[data-category="newbuild"]');
+            if (newbuildTab) {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                newbuildTab.classList.add('active');
+            }
+            const headerTitle = document.querySelector('.header h1');
+            if (headerTitle) {
+                headerTitle.innerHTML = '<i class="fas fa-city"></i> Новостройки Новосибирска';
+            }
+        } else if (category === 'suburban') {
+            this.currentCategory = 'suburban';
+            const suburbanTab = document.querySelector('.tab[data-category="suburban"]');
+            if (suburbanTab) {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                suburbanTab.classList.add('active');
+            }
+            const headerTitle = document.querySelector('.header h1');
+            if (headerTitle) {
+                headerTitle.innerHTML = '<i class="fas fa-tree"></i> Загородная недвижимость';
+            }
+        }
+    }
+
+    /**
+     * Инициализация каталога
+     */
+    async init() {
+        if (this.isInitialized) return;
+        
+        // Показываем скелетон загрузки
+        const catalog = document.getElementById('catalog');
+        if (catalog) {
+            catalog.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Загрузка данных...</p>
+                </div>
+            `;
+        }
+        
+        // Загружаем данные
+        this.database = await loadCatalogData();
+        
+        // Настраиваем интерфейс
+        this.setupEventListeners();
+        this.handleUrlCategory();
+        this.render();
+        
+        this.isInitialized = true;
+        console.log('✅ Каталог инициализирован');
     }
 }
 
-// ========== ИНИЦИАЛИЗАЦИЯ ==========
+// ========== ЗАПУСК ПРИЛОЖЕНИЯ ==========
 
-/**
- * Инициализация приложения
- */
-async function init() {
-    await loadCatalogData();
-    setupCatalogEventListeners();
-    handleUrlCategory();
+// Создаем и экспортируем экземпляр каталога
+const catalog = new Catalog();
+
+// Запускаем инициализацию после загрузки DOM
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => catalog.init());
+} else {
+    catalog.init();
 }
 
-// Делаем функции глобальными для onclick
-window.toggleDeveloper = toggleDeveloper;
-window.toggleComplex = toggleComplex;
-window.copyToClipboard = copyToClipboard;
-window.clearSearch = clearSearch;
-
-// Запуск приложения
-document.addEventListener('DOMContentLoaded', init);
+// Экспортируем экземпляр для возможного использования в других модулях
+export default catalog;
