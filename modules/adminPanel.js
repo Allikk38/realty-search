@@ -6,7 +6,7 @@
  * Экспортируемые классы:
  * - AdminPanel - основной класс
  */
-
+console.log('✅ adminPanel.js загружен');
 import { DataStore, createEmptyRecord } from './dataStore.js';
 import { escapeHtml, formatPhone, showToast, debounce, getCategoryDisplay, shortenRole } from './uiHelpers.js';
 import { initTheme, toggleTheme } from './themeManager.js';
