@@ -1,6 +1,6 @@
 /**
  * Модуль каталога застройщиков
- * Версия: 5.2
+ * Версия: 6.0
  * 
  * ИСТОЧНИК ДАННЫХ: Google Sheets через Apps Script
  */
@@ -61,16 +61,16 @@ function toggleTheme() {
 // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 
 /**
- * Экранирование HTML специальных символов
+ * Экранирование HTML специальных символов (защита от XSS)
  */
 export function escapeHtml(str) {
     if (!str) return '';
-    return String(str).replace(/[&<>]/g, (m) => {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 /**
@@ -98,7 +98,15 @@ export function showToast(message, isError = false) {
     const toast = document.createElement('div');
     toast.className = 'toast';
     toast.style.background = isError ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.9)';
-    toast.innerHTML = message;
+    toast.style.position = 'fixed';
+    toast.style.bottom = '100px';
+    toast.style.right = '30px';
+    toast.style.padding = '12px 24px';
+    toast.style.borderRadius = '48px';
+    toast.style.color = 'white';
+    toast.style.zIndex = '1000';
+    toast.style.fontSize = '14px';
+    toast.innerHTML = escapeHtml(message);
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 2500);
 }
@@ -155,6 +163,7 @@ export function normalizeForSearch(text) {
     
     return normalized;
 }
+
 // ========== НОВАЯ ЗАГРУЗКА ИЗ GOOGLE SHEETS ==========
 
 /**
@@ -181,15 +190,15 @@ export async function loadDataFromGoogleSheets() {
         const contacts = [];
         
         for (const record of records) {
-            const developer = cleanName(record['Застройщик'] || '');
-            const complex = cleanName(record['Название ЖК'] || '');
-            const address = record['Адрес ЖК'] || '';
-            const opAddress = record['Адрес ОП'] || '';
-            const commonPhone = record['Общий телефон'] || '';
-            const manager = record['Менеджер'] || '';
-            const managerPhone = record['Телефон менеджера'] || '';
-            const role = record['Должность'] || 'менеджер';
-            const category = record['Категория'] || 'newbuild';
+            const developer = cleanName(record['Застройщик'] || record['developer'] || '');
+            const complex = cleanName(record['Название ЖК'] || record['complex'] || '');
+            const address = record['Адрес ЖК'] || record['address'] || '';
+            const opAddress = record['Адрес ОП'] || record['opAddress'] || '';
+            const commonPhone = record['Общий телефон'] || record['commonPhone'] || '';
+            const manager = record['Менеджер'] || record['manager'] || '';
+            const managerPhone = record['Телефон менеджера'] || record['managerPhone'] || record['Телефон'] || '';
+            const role = record['Должность'] || record['role'] || 'менеджер';
+            const category = record['Категория'] || record['category'] || 'newbuild';
             
             if (!developer || !complex) continue;
             
@@ -202,7 +211,7 @@ export async function loadDataFromGoogleSheets() {
                     opAddress: opAddress,
                     commonPhone: commonPhone,
                     category: category,
-                    originalName: record['Застройщик'] || ''
+                    originalName: record['Застройщик'] || developer
                 };
             }
             
@@ -284,7 +293,6 @@ export function loadFromLocalStorage() {
  */
 export async function loadCatalogData() {
     let data = null;
-    let fromCache = false;
     
     // Пытаемся загрузить из Google Sheets
     try {
@@ -302,6 +310,7 @@ export async function loadCatalogData() {
     data = loadFromLocalStorage();
     if (data && Object.keys(data.developers).length > 0) {
         console.log('📦 Использованы данные из кэша (localStorage)');
+        showToast('Данные из кэша (Google Sheets недоступен)', false);
         return data;
     }
     
@@ -384,7 +393,7 @@ export function renderDeveloperCard(developer, contacts, isCollapsed = true) {
                         <div class="developer-stats">
                             <span><i class="fas fa-home"></i> ${developer.complexes.length} ЖК</span>
                             <span><i class="fas fa-phone"></i> ${totalContacts} контактов</span>
-                            <span><i class="fas fa-tag"></i> ${categoryText}</span>
+                            <span><i class="fas fa-tag"></i> ${escapeHtml(categoryText)}</span>
                             ${hasOfficeAddress ? `<span><i class="fas fa-map-pin"></i> ОП: ${escapeHtml(developer.opAddress)}</span>` : ''}
                         </div>
                     </div>
@@ -412,8 +421,8 @@ export function renderComplexCard(complex) {
                 ${hasCommonPhone ? `
                     <div class="complex-phone">
                         <i class="fas fa-phone-alt"></i>
-                        ${formatPhoneForDisplay(complex.commonPhone)}
-                        <button class="copy-btn" data-copy="${complex.commonPhone.replace(/'/g, "\\'")}">
+                        ${escapeHtml(formatPhoneForDisplay(complex.commonPhone))}
+                        <button class="copy-btn" data-copy="${complex.commonPhone.replace(/'/g, "\\'").replace(/"/g, '&quot;')}">
                             <i class="fas fa-copy"></i>
                         </button>
                     </div>
@@ -440,9 +449,9 @@ export function renderComplexCard(complex) {
                                 </div>
                                 <div>
                                     <a href="tel:${manager.phone.replace(/[^\d+]/g, '')}" class="manager-phone">
-                                        <i class="fas fa-phone-alt"></i> ${formatPhoneForDisplay(manager.phone)}
+                                        <i class="fas fa-phone-alt"></i> ${escapeHtml(formatPhoneForDisplay(manager.phone))}
                                     </a>
-                                    <button class="copy-btn" data-copy="${manager.phone.replace(/'/g, "\\'")}">
+                                    <button class="copy-btn" data-copy="${manager.phone.replace(/'/g, "\\'").replace(/"/g, '&quot;')}">
                                         <i class="fas fa-copy"></i>
                                     </button>
                                 </div>
@@ -541,7 +550,6 @@ class Catalog {
         return developers;
     }
 
-
     /**
      * Получение застройщиков для текущей страницы
      */
@@ -637,7 +645,7 @@ class Catalog {
                 dev.name.charAt(0).toUpperCase() === letter || 
                 (letter === 'А' && 'AEIOU'.includes(dev.name.charAt(0)))
             );
-            return `<button class="alphabet-btn" data-letter="${letter}" ${!hasDeveloper ? 'disabled style="opacity:0.3"' : ''}>${letter}</button>`;
+            return `<button class="alphabet-btn" data-letter="${letter}" ${!hasDeveloper ? 'disabled style="opacity:0.3"' : ''}>${escapeHtml(letter)}</button>`;
         }).join('');
         
         container.querySelectorAll('.alphabet-btn:not([disabled])').forEach(btn => {
@@ -917,15 +925,22 @@ class Catalog {
             catalog.innerHTML = `<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Загрузка данных...</p></div>`;
         }
         
-        this.database = await loadCatalogData();
-        this.loadCollapseState();
-        this.setupEventListeners();
-        this.setupScrollTopButton();
-        this.handleUrlCategory();
-        this.render();
-        
-        this.isInitialized = true;
-        console.log('✅ Каталог инициализирован с Google Sheets');
+        try {
+            this.database = await loadCatalogData();
+            this.loadCollapseState();
+            this.setupEventListeners();
+            this.setupScrollTopButton();
+            this.handleUrlCategory();
+            this.render();
+            this.isInitialized = true;
+            console.log('✅ Каталог инициализирован с Google Sheets');
+        } catch (err) {
+            console.error('❌ Ошибка инициализации:', err);
+            if (catalog) {
+                catalog.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><p>Ошибка загрузки данных. Пожалуйста, обновите страницу.</p></div>`;
+            }
+            showToast(err.message, true);
+        }
     }
 }
 
