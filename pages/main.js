@@ -1,22 +1,12 @@
 /**
  * Модуль каталога застройщиков
- * Версия: 5.1
+ * Версия: 5.2
  * 
- * НОВЫЕ ФУНКЦИИ:
- * 1. Пагинация (по 20 застройщиков на страницу)
- * 2. Кнопки "Развернуть всё / Свернуть всё"
- * 3. Алфавитный указатель (А-Я)
- * 4. Сохранение состояния в localStorage
- * 5. Кнопка "Наверх"
- * 6. Светлая/тёмная тема с сохранением
- * 
- * Особенности:
- * - Автоматическая загрузка данных из data.csv с GitHub
- * - Кеширование в localStorage
- * - Фильтрация по категориям (Новостройки/Загородная)
- * - Поиск по застройщикам, ЖК и менеджерам
- * - ВСЕ ГРУППЫ СВЁРНУТЫ ПО УМОЛЧАНИЮ
+ * ИСТОЧНИК ДАННЫХ: Google Sheets через Apps Script
  */
+
+// ========== НОВЫЙ URL ВЕБ-ПРИЛОЖЕНИЯ ==========
+const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxOuwNQOD1399I-J40XGadjhjFLFsdLLx1G78insQ4wOd9nkANL0bb221kTU8bJnsGkeg/exec';
 
 // ========== УПРАВЛЕНИЕ ТЕМОЙ ==========
 
@@ -124,107 +114,102 @@ export function cleanName(str) {
         .trim();
 }
 
-// ========== ПАРСИНГ CSV ==========
+// ========== НОВАЯ ЗАГРУЗКА ИЗ GOOGLE SHEETS ==========
 
 /**
- * Парсинг CSV в структуру базы данных
+ * Загрузка данных из Google Sheets через Apps Script
+ * @returns {Promise<{developers: Object, contacts: Array}>}
  */
-export function parseCSVToDatabase(csvText) {
-    const lines = csvText.split('\n');
-    if (lines.length === 0) return { developers: {}, contacts: [] };
-    
-    const developers = {};
-    const contacts = [];
-    let unknownCounter = 0;
-    
-    for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
+export async function loadDataFromGoogleSheets() {
+    try {
+        console.log('🔄 Загрузка данных из Google Sheets...');
+        const response = await fetch(GOOGLE_SHEETS_URL + '?t=' + Date.now());
         
-        const row = [];
-        let inQuotes = false;
-        let current = '';
-        
-        for (const char of line) {
-            if (char === '"') {
-                inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
-                row.push(current.trim());
-                current = '';
-            } else {
-                current += char;
-            }
-        }
-        row.push(current.trim());
-        
-        let developer = row[0]?.replace(/^"|"$/g, '')?.trim();
-        const complex = row[1]?.replace(/^"|"$/g, '')?.trim();
-        const address = row[2]?.replace(/^"|"$/g, '')?.trim() || '';
-        const opAddress = row[3]?.replace(/^"|"$/g, '')?.trim() || '';
-        const commonPhone = row[4]?.replace(/^"|"$/g, '')?.trim() || '';
-        const manager = row[5]?.replace(/^"|"$/g, '')?.trim();
-        const managerPhone = row[6]?.replace(/^"|"$/g, '')?.trim();
-        const role = row[7]?.replace(/^"|"$/g, '')?.trim() || 'менеджер';
-        const category = row[8]?.replace(/^"|"$/g, '')?.trim() || 'newbuild';
-        
-        if (!complex) continue;
-        
-        if (!developer || developer === '') {
-            unknownCounter++;
-            developer = `[ЖК без застройщика ${unknownCounter}]`;
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
         }
         
-        const cleanDeveloper = cleanName(developer);
-        const cleanComplex = cleanName(complex);
+        const records = await response.json();
         
-        if (!developers[cleanDeveloper]) {
-            developers[cleanDeveloper] = {
-                id: 'dev_' + Date.now() + '_' + Math.random(),
-                complexes: [],
-                address: address,
-                opAddress: opAddress,
-                commonPhone: commonPhone,
-                category: category,
-                originalName: developer
-            };
+        if (!Array.isArray(records) || records.length === 0) {
+            throw new Error('Таблица пуста или не содержит данных');
         }
         
-        const devData = developers[cleanDeveloper];
+        // Преобразуем плоский список записей в структуру developers + contacts
+        const developers = {};
+        const contacts = [];
         
-        if (!devData.complexes.includes(cleanComplex)) {
-            devData.complexes.push(cleanComplex);
-        }
-        
-        if (address && !devData.address) devData.address = address;
-        if (opAddress && !devData.opAddress) devData.opAddress = opAddress;
-        if (commonPhone && !devData.commonPhone) devData.commonPhone = commonPhone;
-        if (!devData.category && category) devData.category = category;
-        
-        if (manager && manager !== 'Общий телефон' && manager !== 'Телефон ОП' && managerPhone) {
-            const exists = contacts.some(c => 
-                c.developer === cleanDeveloper && 
-                c.complex === cleanComplex && 
-                c.name === manager
-            );
+        for (const record of records) {
+            const developer = cleanName(record['Застройщик'] || '');
+            const complex = cleanName(record['Название ЖК'] || '');
+            const address = record['Адрес ЖК'] || '';
+            const opAddress = record['Адрес ОП'] || '';
+            const commonPhone = record['Общий телефон'] || '';
+            const manager = record['Менеджер'] || '';
+            const managerPhone = record['Телефон менеджера'] || '';
+            const role = record['Должность'] || 'менеджер';
+            const category = record['Категория'] || 'newbuild';
             
-            if (!exists) {
-                contacts.push({
-                    developer: cleanDeveloper,
-                    complex: cleanComplex,
-                    name: manager,
-                    phone: managerPhone,
-                    role: role
-                });
+            if (!developer || !complex) continue;
+            
+            // Добавляем застройщика, если его ещё нет
+            if (!developers[developer]) {
+                developers[developer] = {
+                    id: 'dev_' + Date.now() + '_' + Math.random(),
+                    complexes: [],
+                    address: address,
+                    opAddress: opAddress,
+                    commonPhone: commonPhone,
+                    category: category,
+                    originalName: record['Застройщик'] || ''
+                };
+            }
+            
+            const devData = developers[developer];
+            
+            // Добавляем ЖК, если его ещё нет
+            if (!devData.complexes.includes(complex)) {
+                devData.complexes.push(complex);
+            }
+            
+            // Обновляем адреса и телефоны, если они пустые
+            if (address && !devData.address) devData.address = address;
+            if (opAddress && !devData.opAddress) devData.opAddress = opAddress;
+            if (commonPhone && !devData.commonPhone) devData.commonPhone = commonPhone;
+            if (category && !devData.category) devData.category = category;
+            
+            // Добавляем контакт менеджера (если есть)
+            if (manager && manager !== 'Общий телефон' && manager !== 'Телефон ОП' && managerPhone) {
+                const exists = contacts.some(c => 
+                    c.developer === developer && 
+                    c.complex === complex && 
+                    c.name === manager
+                );
+                
+                if (!exists) {
+                    contacts.push({
+                        developer: developer,
+                        complex: complex,
+                        name: manager,
+                        phone: managerPhone,
+                        role: role
+                    });
+                }
             }
         }
+        
+        console.log(`📊 Загружено: ${Object.keys(developers).length} застройщиков, ${contacts.length} контактов`);
+        return { developers, contacts };
+        
+    } catch (err) {
+        console.error('❌ Ошибка загрузки из Google Sheets:', err);
+        throw new Error('Не удалось загрузить данные из таблицы. Проверьте интернет-соединение или доступ к таблице.');
     }
-    
-    console.log(`📊 Парсинг завершен: ${Object.keys(developers).length} застройщиков, ${contacts.length} контактов`);
-    return { developers, contacts };
 }
 
-// ========== РАБОТА С ХРАНИЛИЩЕМ ==========
-
+/**
+ * Сохранение данных в localStorage (кэш)
+ */
 export function saveToLocalStorage(database) {
     try {
         localStorage.setItem('contactsDatabase', JSON.stringify(database));
@@ -237,12 +222,15 @@ export function saveToLocalStorage(database) {
     }
 }
 
+/**
+ * Загрузка из localStorage (кэш)
+ */
 export function loadFromLocalStorage() {
     try {
         const saved = localStorage.getItem('contactsDatabase');
         if (!saved) return null;
         const data = JSON.parse(saved);
-        console.log('📀 Данные загружены из localStorage');
+        console.log('📀 Данные загружены из localStorage (кэш)');
         return data;
     } catch (e) {
         console.error('Ошибка загрузки из localStorage:', e);
@@ -250,31 +238,41 @@ export function loadFromLocalStorage() {
     }
 }
 
-export async function loadDataFromGitHub() {
-    const csvUrl = 'https://raw.githubusercontent.com/allikk38/realty-search/main/data.csv';
+/**
+ * Основная функция загрузки данных (с кэшированием)
+ */
+export async function loadCatalogData() {
+    let data = null;
+    let fromCache = false;
     
+    // Пытаемся загрузить из Google Sheets
     try {
-        console.log('🔄 Загрузка данных с GitHub...');
-        const response = await fetch(csvUrl + '?t=' + Date.now());
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const csvText = await response.text();
-        const parsedData = parseCSVToDatabase(csvText);
-        
-        if (parsedData && Object.keys(parsedData.developers).length > 0) {
-            saveToLocalStorage(parsedData);
-            console.log(`✅ Данные загружены из GitHub: ${Object.keys(parsedData.developers).length} застройщиков`);
-            return parsedData;
-        } else {
-            console.warn('⚠️ GitHub вернул пустые данные');
-            return null;
+        data = await loadDataFromGoogleSheets();
+        if (data && Object.keys(data.developers).length > 0) {
+            saveToLocalStorage(data);
+            console.log('✅ Данные загружены из Google Sheets');
+            return data;
         }
     } catch (err) {
-        console.error('❌ Ошибка загрузки данных с GitHub:', err);
-        return null;
+        console.warn('Не удалось загрузить из Google Sheets:', err.message);
     }
+    
+    // Если не получилось — берём из кэша
+    data = loadFromLocalStorage();
+    if (data && Object.keys(data.developers).length > 0) {
+        console.log('📦 Использованы данные из кэша (localStorage)');
+        return data;
+    }
+    
+    // Если и кэша нет — показываем демо-данные и ошибку
+    console.error('❌ Нет данных ни из Google Sheets, ни из кэша');
+    showToast('Не удалось загрузить данные. Проверьте подключение к интернету.', true);
+    return initDemoData();
 }
 
+/**
+ * Демо-данные на случай полного отсутствия соединения
+ */
 export function initDemoData() {
     const demoData = {
         developers: {
@@ -313,25 +311,6 @@ export function initDemoData() {
     saveToLocalStorage(demoData);
     console.log('📦 Инициализированы демо-данные');
     return demoData;
-}
-
-export async function loadCatalogData() {
-    let data = await loadDataFromGitHub();
-    if (!data) data = loadFromLocalStorage();
-    if (!data) data = initDemoData();
-    
-    for (const devName in data.developers) {
-        if (!data.developers[devName].category) {
-            const isSuburban = devName.toLowerCase().includes('кп') || 
-                              devName.toLowerCase().includes('поселок') ||
-                              devName.toLowerCase().includes('деревня') ||
-                              devName.toLowerCase().includes('загород');
-            data.developers[devName].category = isSuburban ? 'suburban' : 'newbuild';
-        }
-    }
-    
-    console.log(`📊 Застройщиков: ${Object.keys(data.developers).length}, Контактов: ${data.contacts.length}`);
-    return data;
 }
 
 // ========== КОМПОНЕНТЫ ОТОБРАЖЕНИЯ ==========
@@ -900,7 +879,7 @@ class Catalog {
         this.render();
         
         this.isInitialized = true;
-        console.log('✅ Каталог инициализирован с новыми функциями и темой');
+        console.log('✅ Каталог инициализирован с Google Sheets');
     }
 }
 
