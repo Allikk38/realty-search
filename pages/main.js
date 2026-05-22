@@ -138,8 +138,8 @@ export function normalizeForSearch(text) {
         'брусника': 'брусника',
         'грустника': 'брусника',
         'грусника': 'брусника',
-        'страна девелопмент': 'страна.девелопмент',
-        'страна береговая': 'страна.береговая',
+        'страна девелопмент': 'страна девелопмент',
+        'страна береговая': 'страна береговая',
         'ред фокс': 'red fox',
         'redfox': 'red fox',
         'фридом сити': 'freedom city',
@@ -148,7 +148,8 @@ export function normalizeForSearch(text) {
     
     for (let [key, value] of Object.entries(replacements)) {
         if (normalized.includes(key)) {
-            normalized = normalized.replace(new RegExp(key, 'g'), value);
+            const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+            normalized = normalized.replace(regex, value);
         }
     }
     
