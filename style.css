@@ -373,31 +373,6 @@ h1 {
     }
 }
 
-@media (max-width: 768px) {
-    .container {
-        padding: 24px;
-    }
-    
-    h1 {
-        font-size: 1.8rem;
-    }
-    
-    .search-box input,
-    .search-box select,
-    .search-box button {
-        width: 100%;
-    }
-    
-    .stats {
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-    }
-    
-    .result-card strong {
-        font-size: 1rem;
-    }
-}
 .share-btn {
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -451,4 +426,95 @@ h1 {
         opacity: 1;
         transform: translateX(-50%) translateY(0);
     }
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 24px;
+    }
+    
+    h1 {
+        font-size: 1.8rem;
+    }
+    
+    .search-box input,
+    .search-box select,
+    .search-box button {
+        width: 100%;
+    }
+    
+    .stats {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+    
+    .result-card strong {
+        font-size: 1rem;
+    }
+}
+
+/* Светлая тема для style.css (если используется) */
+body.light-theme {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
+}
+
+body.light-theme .container {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme h1 {
+    background: linear-gradient(135deg, #7c3aed 0%, #2563eb 50%, #0891b2 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+}
+
+body.light-theme .sub {
+    color: #475569;
+}
+
+body.light-theme .search-box input,
+body.light-theme .search-box select {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.15);
+    color: #1e293b;
+}
+
+body.light-theme .search-box input::placeholder {
+    color: #94a3b8;
+}
+
+body.light-theme .stats {
+    background: rgba(0, 0, 0, 0.05);
+    color: #475569;
+}
+
+body.light-theme .result-card {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .result-card strong {
+    color: #1e293b;
+}
+
+body.light-theme .result-card > * {
+    color: #475569;
+}
+
+body.light-theme .copy-btn {
+    background: rgba(0, 0, 0, 0.08);
+    border-color: rgba(0, 0, 0, 0.15);
+    color: #475569;
+}
+
+body.light-theme .copy-btn:hover {
+    background: linear-gradient(135deg, #7c3aed, #2563eb);
+    color: white;
+}
+
+body.light-theme .footer {
+    color: #94a3b8;
+    border-top-color: rgba(0, 0, 0, 0.1);
 }
