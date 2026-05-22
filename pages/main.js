@@ -516,20 +516,32 @@ class Catalog {
         }
         
         if (this.searchQuery) {
-            const query = this.searchQuery.toLowerCase();
+            const normalizedQuery = normalizeForSearch(this.searchQuery);
             developers = developers.filter(dev => {
-                if (dev.name.toLowerCase().includes(query)) return true;
+                // Нормализуем название застройщика
+                const devNameNorm = normalizeForSearch(dev.name);
+                if (devNameNorm.includes(normalizedQuery)) return true;
+                
+                // Проверяем ЖК
                 const hasMatchingComplex = dev.complexes.some(complex => 
-                    String(complex).toLowerCase().includes(query)
+                    normalizeForSearch(complex).includes(normalizedQuery)
                 );
                 if (hasMatchingComplex) return true;
+                
+                // Проверяем контакты
                 const hasMatchingContact = this.database.contacts.some(contact => 
                     contact.developer === dev.name && 
-                    (contact.name.toLowerCase().includes(query) || contact.phone.includes(query))
+                    (normalizeForSearch(contact.name).includes(normalizedQuery) || 
+                     contact.phone.includes(this.searchQuery))
                 );
                 return hasMatchingContact;
             });
         }
+        
+        developers.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+        this.filteredDevelopers = developers;
+        return developers;
+    }
         
         developers.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
         this.filteredDevelopers = developers;
