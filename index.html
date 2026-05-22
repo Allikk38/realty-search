@@ -218,7 +218,7 @@
             padding: 0 16px;
         }
 
-        /* Кнопка админки (удалена) */
+        /* Кнопка полного каталога */
         .full-catalog-link {
             display: flex;
             align-items: center;
@@ -314,6 +314,32 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        /* Уведомления */
+        .toast-notification {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 48px;
+            z-index: 1000;
+            font-size: 14px;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
     </style>
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icons/icon_3.png">
@@ -396,33 +422,66 @@
     <script>
         // URL веб-приложения Google Apps Script
         const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxOuwNQOD1399I-J40XGadjhjFLFsdLLx1G78insQ4wOd9nkANL0bb221kTU8bJnsGkeg/exec';
-
+        
+        // Функция для показа уведомлений
+        function showToast(message, isError = false) {
+            const existing = document.querySelector('.toast-notification');
+            if (existing) existing.remove();
+            
+            const toast = document.createElement('div');
+            toast.className = 'toast-notification';
+            toast.style.background = isError ? 'rgba(239, 68, 68, 0.9)' : 'rgba(0, 0, 0, 0.9)';
+            toast.innerHTML = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+        
         // Функция очистки названия
         function cleanName(str) {
             if (!str) return '';
-            return str.replace(/Сайт|ТГ-канал|Realt\.one/gi, '').replace(/\s{2,}/g, ' ').trim();
+            return String(str).replace(/Сайт|ТГ-канал|Realt\.one/gi, '').replace(/\s{2,}/g, ' ').trim();
         }
-
+        
+        // Экранирование HTML
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+        
         // Загрузка статистики из Google Sheets
         async function loadStats() {
+            const developersEl = document.getElementById('developersCount');
+            const complexesEl = document.getElementById('complexesCount');
+            const contactsEl = document.getElementById('contactsCount');
+            
             try {
+                console.log('🔄 Загрузка статистики...');
                 const response = await fetch(GOOGLE_SHEETS_URL + '?t=' + Date.now());
-                if (!response.ok) throw new Error('Ошибка загрузки');
+                
+                if (!response.ok) {
+                    throw new Error(`Ошибка HTTP ${response.status}`);
+                }
                 
                 const records = await response.json();
+                
                 if (!Array.isArray(records) || records.length === 0) {
                     throw new Error('Нет данных');
                 }
-
-                // Считаем уникальных застройщиков
+                
+                // Считаем уникальных застройщиков и ЖК
                 const developersSet = new Set();
                 const complexesSet = new Set();
                 let contactsCount = 0;
-
+                
                 for (const record of records) {
-                    const developer = cleanName(record['Застройщик'] || '');
-                    const complex = cleanName(record['Название ЖК'] || '');
-                    const manager = record['Менеджер'] || '';
+                    const developer = cleanName(record['Застройщик'] || record['developer'] || '');
+                    const complex = cleanName(record['Название ЖК'] || record['complex'] || '');
+                    const manager = record['Менеджер'] || record['manager'] || '';
                     
                     if (developer) developersSet.add(developer);
                     if (developer && complex) complexesSet.add(`${developer}|${complex}`);
@@ -430,26 +489,50 @@
                         contactsCount++;
                     }
                 }
-
-                document.getElementById('developersCount').textContent = developersSet.size;
-                document.getElementById('complexesCount').textContent = complexesSet.size;
-                document.getElementById('contactsCount').textContent = contactsCount;
                 
-                console.log(`Статистика: ${developersSet.size} застройщиков, ${complexesSet.size} ЖК, ${contactsCount} контактов`);
+                if (developersEl) developersEl.textContent = developersSet.size;
+                if (complexesEl) complexesEl.textContent = complexesSet.size;
+                if (contactsEl) contactsEl.textContent = contactsCount;
+                
+                console.log(`📊 Статистика: ${developersSet.size} застройщиков, ${complexesSet.size} ЖК, ${contactsCount} контактов`);
                 
             } catch (error) {
-                console.error('Ошибка загрузки статистики:', error);
-                document.getElementById('developersCount').textContent = '?';
-                document.getElementById('complexesCount').textContent = '?';
-                document.getElementById('contactsCount').textContent = '?';
+                console.error('❌ Ошибка загрузки статистики:', error);
+                if (developersEl) developersEl.textContent = '?';
+                if (complexesEl) complexesEl.textContent = '?';
+                if (contactsEl) contactsEl.textContent = '?';
+                
+                // Пробуем загрузить из localStorage
+                try {
+                    const cached = localStorage.getItem('contactsDatabase');
+                    if (cached) {
+                        const data = JSON.parse(cached);
+                        if (data && data.developers) {
+                            const devCount = Object.keys(data.developers).length;
+                            let complexesCount = 0;
+                            let contactsCount = 0;
+                            
+                            for (const dev of Object.values(data.developers)) {
+                                complexesCount += dev.complexes.length;
+                            }
+                            
+                            if (data.contacts) contactsCount = data.contacts.length;
+                            
+                            if (developersEl) developersEl.textContent = devCount;
+                            if (complexesEl) complexesEl.textContent = complexesCount;
+                            if (contactsEl) contactsEl.textContent = contactsCount;
+                            
+                            showToast('Данные из кэша (Google Sheets недоступен)', false);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Не удалось загрузить кэш:', e);
+                }
             }
         }
-
-        // Анимация появления
-        document.addEventListener('DOMContentLoaded', () => {
-            loadStats();
-            
-            // Плавное появление карточек
+        
+        // Плавное появление карточек
+        function animateCards() {
             const cards = document.querySelectorAll('.card-link');
             cards.forEach((card, index) => {
                 card.style.opacity = '0';
@@ -460,19 +543,20 @@
                     card.style.transform = 'translateY(0)';
                 }, index * 100);
             });
+        }
+        
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            animateCards();
         });
-    </script>
-    <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js')
-        .then(reg => console.log('SW registered:', reg))
-        .catch(err => console.log('SW error:', err));
-    }
-    </script>
-    <script>
-    // Принудительное включение тёмной темы
-    document.body.classList.remove('light-theme');
-    localStorage.setItem('catalogTheme', 'dark');
+        
+        // Регистрация Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('✅ SW registered:', reg))
+                .catch(err => console.log('❌ SW error:', err));
+        }
     </script>
 </body>
 </html>
