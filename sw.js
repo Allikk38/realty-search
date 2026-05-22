@@ -1,11 +1,13 @@
-const CACHE_NAME = 'agent-catalog-v1';
+const CACHE_NAME = 'agent-catalog-v2'; // сменили версию
 const urlsToCache = [
   '/',
   '/index.html',
   '/app/index.html',
   '/pages/main.js',
   '/script.js',
-  '/manifest.json'
+  '/style.css',
+  '/manifest.json',
+  '/data.csv'  // если нужно кэшировать данные
 ];
 
 self.addEventListener('install', event => {
