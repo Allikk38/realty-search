@@ -77,7 +77,10 @@ function normalizeForSearch(text) {
         'ред фокс': 'red fox',
         'redfox': 'red fox',
         'фридом сити': 'freedom city',
-        'счастье в кольцово': 'счастье в кольцово'
+        'счастье в кольцово': 'счастье в кольцово',
+        'грустника': 'брусника',
+        'грусника': 'брусника',
+        'брусника': 'брусника',
     };
     
     for (let [key, value] of Object.entries(replacements)) {
