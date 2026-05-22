@@ -4,6 +4,9 @@ let lastSearchQuery = '';
 let lastSearchType = 'all';
 let lastResults = [];
 
+// ========== НОВЫЙ URL ВЕБ-ПРИЛОЖЕНИЯ ==========
+const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxOuwNQOD1399I-J40XGadjhjFLFsdLLx1G78insQ4wOd9nkANL0bb221kTU8bJnsGkeg/exec';
+
 // ========== АНИМАЦИИ ЗАГРУЗКИ ==========
 function showSkeleton() {
     const resultsDiv = document.getElementById('results');
@@ -115,43 +118,25 @@ function isSimilar(str1, str2) {
 async function loadData() {
     if (cachedData) return cachedData;
     
-    const response = await fetch('data.csv');
-    const csvText = await response.text();
-    
-    const lines = csvText.split('\n');
-    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
-    
-    const data = [];
-    for (let i = 1; i < lines.length; i++) {
-        if (!lines[i].trim()) continue;
+    try {
+        const response = await fetch(GOOGLE_SHEETS_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
-        const row = [];
-        let inQuotes = false;
-        let current = '';
+        const data = await response.json();
         
-        for (let char of lines[i]) {
-            if (char === '"') {
-                inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
-                row.push(current.trim());
-                current = '';
-            } else {
-                current += char;
-            }
+        if (!Array.isArray(data) || data.length === 0) {
+            throw new Error('Таблица пуста или не содержит данных');
         }
-        row.push(current.trim());
         
-        const obj = {};
-        for (let j = 0; j < headers.length; j++) {
-            let value = row[j] ? row[j].replace(/^"|"$/g, '') : '';
-            obj[headers[j]] = value;
-        }
-        data.push(obj);
+        cachedData = data;
+        lastUpdateDate = new Date();
+        console.log(`✅ Данные загружены из Google Sheets: ${data.length} записей`);
+        return data;
+        
+    } catch (err) {
+        console.error('Ошибка загрузки из Google Sheets:', err);
+        throw new Error('Не удалось загрузить данные из таблицы. Проверьте интернет-соединение или доступ к таблице.');
     }
-    
-    cachedData = data;
-    lastUpdateDate = new Date();
-    return data;
 }
 
 // ========== ВЫЗОВ YANDEXGPT ==========
@@ -414,7 +399,7 @@ async function check() {
         loadParamsFromUrl();
     } catch (err) {
         console.error('Ошибка загрузки:', err);
-        resultsDiv.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${err.message}<br>Файл data.csv не найден</div>`;
+        resultsDiv.innerHTML = `<div class="error"><i class="fas fa-exclamation-triangle"></i> ${err.message}<br>Проверьте доступ к Google Sheets или откройте таблицу заново.</div>`;
     }
 }
 
