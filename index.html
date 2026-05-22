@@ -218,8 +218,8 @@
             padding: 0 16px;
         }
 
-        /* Кнопка админки */
-        .admin-link {
+        /* Кнопка админки (удалена) */
+        .full-catalog-link {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -235,7 +235,7 @@
             margin-top: 8px;
         }
 
-        .admin-link:hover {
+        .full-catalog-link:hover {
             background: rgba(255, 255, 255, 0.08);
             color: #a78bfa;
             border-color: #a78bfa;
@@ -298,6 +298,22 @@
                 font-size: 1.5rem;
             }
         }
+
+        /* Спиннер загрузки */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #a78bfa;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -345,7 +361,7 @@
             <span>или</span>
         </div>
 
-        <a href="app/index.html" class="admin-link">
+        <a href="app/index.html" class="full-catalog-link">
             <i class="fas fa-th-large"></i>
             <span>Полный каталог (все категории)</span>
             <i class="fas fa-arrow-right"></i>
@@ -367,32 +383,59 @@
         </div>
 
         <div class="footer">
-            <i class="fas fa-sync-alt"></i> Данные обновляются ежедневно
+            <i class="fas fa-sync-alt"></i> Данные из Google Sheets
         </div>
     </div>
 
     <script>
-        // Загрузка статистики из localStorage
-        function loadStats() {
+        // URL веб-приложения Google Apps Script
+        const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxOuwNQOD1399I-J40XGadjhjFLFsdLLx1G78insQ4wOd9nkANL0bb221kTU8bJnsGkeg/exec';
+
+        // Функция очистки названия
+        function cleanName(str) {
+            if (!str) return '';
+            return str.replace(/Сайт|ТГ-канал|Realt\.one/gi, '').replace(/\s{2,}/g, ' ').trim();
+        }
+
+        // Загрузка статистики из Google Sheets
+        async function loadStats() {
             try {
-                const saved = localStorage.getItem('contactsDatabase');
-                if (saved) {
-                    const db = JSON.parse(saved);
-                    const developersCount = Object.keys(db.developers || {}).length;
-                    const complexesCount = Object.values(db.developers || {}).reduce((sum, dev) => sum + (dev.complexes?.length || 0), 0);
-                    const contactsCount = (db.contacts || []).length;
-                    
-                    document.getElementById('developersCount').textContent = developersCount;
-                    document.getElementById('complexesCount').textContent = complexesCount;
-                    document.getElementById('contactsCount').textContent = contactsCount;
-                } else {
-                    // Демо-статистика
-                    document.getElementById('developersCount').textContent = '0';
-                    document.getElementById('complexesCount').textContent = '0';
-                    document.getElementById('contactsCount').textContent = '0';
+                const response = await fetch(GOOGLE_SHEETS_URL + '?t=' + Date.now());
+                if (!response.ok) throw new Error('Ошибка загрузки');
+                
+                const records = await response.json();
+                if (!Array.isArray(records) || records.length === 0) {
+                    throw new Error('Нет данных');
                 }
-            } catch(e) {
-                console.error('Ошибка загрузки статистики', e);
+
+                // Считаем уникальных застройщиков
+                const developersSet = new Set();
+                const complexesSet = new Set();
+                let contactsCount = 0;
+
+                for (const record of records) {
+                    const developer = cleanName(record['Застройщик'] || '');
+                    const complex = cleanName(record['Название ЖК'] || '');
+                    const manager = record['Менеджер'] || '';
+                    
+                    if (developer) developersSet.add(developer);
+                    if (developer && complex) complexesSet.add(`${developer}|${complex}`);
+                    if (manager && manager !== 'Общий телефон' && manager !== 'Телефон ОП') {
+                        contactsCount++;
+                    }
+                }
+
+                document.getElementById('developersCount').textContent = developersSet.size;
+                document.getElementById('complexesCount').textContent = complexesSet.size;
+                document.getElementById('contactsCount').textContent = contactsCount;
+                
+                console.log(`Статистика: ${developersSet.size} застройщиков, ${complexesSet.size} ЖК, ${contactsCount} контактов`);
+                
+            } catch (error) {
+                console.error('Ошибка загрузки статистики:', error);
+                document.getElementById('developersCount').textContent = '?';
+                document.getElementById('complexesCount').textContent = '?';
+                document.getElementById('contactsCount').textContent = '?';
             }
         }
 
