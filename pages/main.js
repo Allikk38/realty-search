@@ -114,6 +114,46 @@ export function cleanName(str) {
         .trim();
 }
 
+/**
+ * Нормализация строки для поиска (с исправлением опечаток)
+ */
+export function normalizeForSearch(text) {
+    if (!text) return '';
+    
+    let normalized = text.toLowerCase().trim();
+    normalized = normalized.replace(/\s+/g, ' ');
+    normalized = normalized.replace(/[-–—.\/\\]/g, ' ');
+    normalized = normalized.replace(/[()\"'`]/g, '');
+    
+    const replacements = {
+        'кпд газстрой': 'кпд-газстрой',
+        'кпдгазстрой': 'кпд-газстрой',
+        'гпд газстрой': 'кпд-газстрой',
+        'гпдгазстрой': 'кпд-газстрой',
+        'кпд газстройй': 'кпд-газстрой',
+        'газстрой': 'кпд-газстрой',
+        'вира': 'vira',
+        'vira': 'вира',
+        'расцветай': 'расцветай',
+        'брусника': 'брусника',
+        'грустника': 'брусника',
+        'грусника': 'брусника',
+        'страна девелопмент': 'страна.девелопмент',
+        'страна береговая': 'страна.береговая',
+        'ред фокс': 'red fox',
+        'redfox': 'red fox',
+        'фридом сити': 'freedom city',
+        'счастье в кольцово': 'счастье в кольцово'
+    };
+    
+    for (let [key, value] of Object.entries(replacements)) {
+        if (normalized.includes(key)) {
+            normalized = normalized.replace(new RegExp(key, 'g'), value);
+        }
+    }
+    
+    return normalized;
+}
 // ========== НОВАЯ ЗАГРУЗКА ИЗ GOOGLE SHEETS ==========
 
 /**
